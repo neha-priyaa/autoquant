@@ -21,8 +21,10 @@ import importlib.machinery
 import importlib.util
 import json
 import llm
+import os
 import re
 import sys
+import time
 from pathlib import Path
 
 import catalog
@@ -33,6 +35,7 @@ import yaml
 ROOT = Path(__file__).resolve().parent
 SPECS = ROOT / "specs"
 STRATEGIES = ROOT / "strategies"
+COMPARE = STRATEGIES / "compare"
 
 CLI_TIMEOUT = 600
 
@@ -169,26 +172,31 @@ def pending_specs(specs_dir: Path, strategies_dir: Path, retry: bool) -> list[Pa
 
 
 def generate_one(spec_path: Path, model: str | None,
-                 extra: list[str] | None = None) -> dict:
-    """One LLM call -> {"slug", "source"} or {"slug", "error"}."""
+                 extra: list[str] | None = None,
+                 template: str | None = None) -> dict:
+    """One LLM call -> {"slug", "source"/"error", "elapsed"}."""
     try:
         spec = yaml.safe_load(spec_path.read_text())
         slug = spec["meta"]["slug"]
     except (yaml.YAMLError, KeyError, AttributeError, TypeError, OSError) as exc:
-        return {"slug": spec_path.stem, "error": f"unreadable spec: {exc}"[:300]}
+        return {"slug": spec_path.stem, "error": f"unreadable spec: {exc}"[:300],
+                "elapsed": 0.0}
     if slug != spec_path.stem:
-        return {"slug": spec_path.stem,
+        return {"slug": spec_path.stem, "elapsed": 0.0,
                 "error": "meta.slug does not match spec filename"}
 
+    t0 = time.monotonic()
     try:
         reply = llm.complete(build_prompt(spec), model=model, extra=extra,
-                             timeout=CLI_TIMEOUT)
+                             timeout=CLI_TIMEOUT, template=template)
     except llm.LLMError as exc:
-        return {"slug": slug, "error": str(exc)}
+        return {"slug": slug, "error": str(exc),
+                "elapsed": time.monotonic() - t0}
+    elapsed = time.monotonic() - t0
     source = strip_fence(reply)
     if not source:
-        return {"slug": slug, "error": "empty reply"}
-    return {"slug": slug, "source": source}
+        return {"slug": slug, "error": "empty reply", "elapsed": elapsed}
+    return {"slug": slug, "source": source, "elapsed": elapsed}
 
 
 def publish(result: dict, spec: dict, strategies_dir: Path) -> str:
@@ -222,6 +230,82 @@ def publish(result: dict, spec: dict, strategies_dir: Path) -> str:
     return "coded"
 
 
+def pick(label: str, slug: str) -> None:
+    """Promote a compare candidate to the trusted strategies/ namespace."""
+    cand_dir = COMPARE / label
+    src = cand_dir / f"{slug}.py"
+    if (cand_dir / f"{slug}.error").exists():
+        sys.exit(f"error: candidate {label}/{slug} failed its smoke test")
+    if not src.exists():
+        sys.exit(f"error: no candidate {src.relative_to(ROOT)}")
+    dest = STRATEGIES / f"{slug}.py"
+    tmp = dest.with_suffix(".py.tmp")
+    tmp.write_text(src.read_text())
+    tmp.replace(dest)
+    (STRATEGIES / f"{slug}.error").unlink(missing_ok=True)
+    print(f"picked {label}/{slug} -> strategies/{slug}.py")
+
+
+def run_compare(candidates: list[tuple[str, str]], todo: list[Path],
+                args: argparse.Namespace) -> int:
+    """Generate each pending spec once per candidate model; artifacts go to
+    strategies/compare/<label>/. The circuit breaker trips per label. Print
+    a summary table; exit 1 if any label aborted."""
+    print(f"compare: {len(candidates)} models x {len(todo)} specs\n")
+    stats = {label: {"coded": 0, "smoke_failed": 0, "cli_failed": 0,
+                     "times": []} for label, _cmd in candidates}
+    aborted: list[str] = []
+
+    for label, cmd in candidates:
+        print(f"-- {label} ({cmd})")
+        done: list[dict] = []
+        abort = None
+        with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as pool:
+            futures = {pool.submit(generate_one, p, args.model,
+                                   args.llm_arg, cmd): p for p in todo}
+            for fut in concurrent.futures.as_completed(futures):
+                result = fut.result()
+                spec_path = futures[fut]
+                try:
+                    spec = yaml.safe_load(spec_path.read_text())
+                except (yaml.YAMLError, OSError):
+                    spec = None  # error results never reach the spec-using path
+                stage = publish(result, spec, COMPARE / label)
+                err = result.get("error", "")
+                if stage == "coded":
+                    stats[label]["coded"] += 1
+                    mark = "OK  "
+                elif llm.is_cli_error(err):
+                    stats[label]["cli_failed"] += 1
+                    mark = "FAIL"
+                else:
+                    stats[label]["smoke_failed"] += 1
+                    mark = "FAIL"
+                stats[label]["times"].append(result.get("elapsed", 0.0))
+                print(f"[{label}] {mark}  {stage:<15} {spec_path.stem}")
+                done.append(result)
+                abort = llm.circuit_break(done)
+                if abort:
+                    pool.shutdown(wait=False, cancel_futures=True)
+                    break
+        if abort:
+            print(f"\n[{label}] {abort}")
+            aborted.append(label)
+
+    print(f"\n{'label':<12} {'coded':>6} {'smoke_failed':>13} "
+          f"{'cli_failed':>11} {'median_s':>9}")
+    for label, _cmd in candidates:
+        s = stats[label]
+        times = sorted(s["times"])
+        median = times[len(times) // 2] if times else 0.0
+        print(f"{label:<12} {s['coded']:>6} {s['smoke_failed']:>13} "
+              f"{s['cli_failed']:>11} {median:>9.1f}")
+
+    print(f"\nartifacts -> strategies/compare/<label>/ ; promote one with "
+          f"codegen.py --pick <label> --slug <slug>")
+    return 1 if aborted else 0
+
+
 def main_with(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, default=0, help="0 = no limit")
@@ -231,10 +315,37 @@ def main_with(argv: list[str] | None = None) -> int:
                     help="extra argument passed through to the LLM CLI (repeatable)")
     ap.add_argument("--retry-failed", action="store_true",
                     help="also retry specs with a strategies/<slug>.error marker")
+    ap.add_argument("--compare-models", default=None, metavar="SPEC",
+                    help="'label=cmd,label=cmd' comparison mode (env fallback: "
+                         "AUTOQUANT_LLM_COMPARE); artifacts go to "
+                         "strategies/compare/<label>/")
+    ap.add_argument("--pick", default=None, metavar="LABEL",
+                    help="promote strategies/compare/<label>/<slug>.py to "
+                         "strategies/<slug>.py (requires --slug)")
+    ap.add_argument("--slug", default=None,
+                    help="slug to promote with --pick")
     args = ap.parse_args(argv)
+
+    if args.pick:
+        if not args.slug:
+            sys.exit("error: --pick requires --slug")
+        pick(args.pick, args.slug)
+        return 0
+
+    compare_spec = args.compare_models or os.environ.get(
+        "AUTOQUANT_LLM_COMPARE", "")
+    candidates = None
+    if compare_spec:
+        try:
+            candidates = llm.parse_compare(compare_spec)
+        except llm.LLMError as exc:
+            sys.exit(f"error: {exc}")
 
     try:
         llm.preflight()
+        if candidates:
+            for _label, cmd in candidates:
+                llm.preflight_for(cmd)
     except llm.LLMError as exc:
         sys.exit(f"error: {exc}")
 
@@ -244,6 +355,9 @@ def main_with(argv: list[str] | None = None) -> int:
     if not todo:
         print("nothing to codegen -- run extract.py first, or pass --retry-failed")
         return 0
+
+    if candidates:
+        return run_compare(candidates, todo, args)
 
     print(f"codegen {len(todo)} specs ({args.jobs} at a time)\n")
     stages: dict[str, int] = {}

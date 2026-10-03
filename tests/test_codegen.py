@@ -234,7 +234,8 @@ class TestGenerateOne:
         spec_path = write_spec(tmp_path)
         seen = {}
 
-        def fake_complete(prompt, *, model=None, extra=None, timeout=600):
+        def fake_complete(prompt, *, model=None, extra=None, timeout=600,
+                          template=None):
             seen["model"] = model
             seen["extra"] = list(extra or [])
             seen["timeout"] = timeout

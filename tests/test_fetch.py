@@ -172,3 +172,19 @@ class TestFetchOne:
 
         row = fetch.fetch_one(OkSession(), StubRobots(True), make_row())
         assert row["stage"] == "fetched"
+
+
+class TestCboeProseExtraction:
+    CBOE_HTML = """
+    <html><head><title>T</title></head><body>
+      <div class="banner-education">Subscribe to Cboe education!</div>
+      <div class="prose"><p>%s</p></div>
+      <div class="disclaimer">Options involve risk and are not suitable
+      for all investors.</div>
+    </body></html>
+    """ % ("Analysts noted that implied volatility declined across majors. " * 30)
+
+    def test_prose_container_extracted(self):
+        title, text = fetch.extract(self.CBOE_HTML)
+        assert "implied volatility declined" in text
+        assert "Subscribe to Cboe education" not in text

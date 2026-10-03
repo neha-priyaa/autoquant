@@ -19,6 +19,7 @@ tool state, and generated reports stay out of Git.
 
 ```bash
 python3 harvest.py                # [1] latest Quantocracy links -> data/articles.jsonl
+python3 harvest_cboe.py           # [1] Cboe Insights (RSS; --backfill N for archive)
 python3 fetch.py                  # [2] article text -> data/pages/
 python3 triage.py                 # [3] backtestability scores -> data/triage.jsonl
 python3 extract.py                # [4] triaged article -> specs/<slug>.yaml
@@ -32,6 +33,14 @@ Every stage is independent and resumable: re-running any command skips work
 that already has its output artifact. Specs, strategy code, and
 `results/leaderboard.jsonl` are committed; page caches, price caches, and
 full reports stay out of Git.
+
+### Article sources
+
+`harvest.py` pulls the Quantocracy mashup; `harvest_cboe.py` pulls Cboe
+Insights (RSS latest ~25, or `--backfill N` walking `/insights/?page=N`).
+Both append to the same `data/articles.jsonl` with the same row contract;
+Cboe slugs are prefixed `cboe-` so downstream artifacts never collide.
+`fetch.py` extracts Cboe bodies via the `.prose` container.
 
 ### Swapping the LLM provider
 

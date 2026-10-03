@@ -19,6 +19,7 @@ into LLMError so a mid-run failure becomes a per-item error, never a crash.
 """
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import shlex
@@ -33,10 +34,9 @@ class LLMError(Exception):
     """A completion failed: CLI missing, timed out, or nonzero exit."""
 
 
-def build_argv(model: str | None = None,
-               extra: list[str] | None = None) -> list[str]:
-    """Assemble the CLI argv from AUTOQUANT_LLM_CMD (default: `opencode run`)."""
-    template = os.environ.get("AUTOQUANT_LLM_CMD", DEFAULT_CMD)
+def _build_argv_from(template: str, model: str | None = None,
+                     extra: list[str] | None = None) -> list[str]:
+    """Assemble argv from an explicit command template."""
     if "{model}" in template:
         argv = shlex.split(template.format(model=model or ""))
     else:
@@ -48,24 +48,78 @@ def build_argv(model: str | None = None,
     return argv
 
 
-def preflight() -> None:
-    """Raise LLMError early if the configured CLI is not on PATH."""
-    template = os.environ.get("AUTOQUANT_LLM_CMD", DEFAULT_CMD)
+def build_argv(model: str | None = None,
+               extra: list[str] | None = None) -> list[str]:
+    """Assemble the CLI argv from AUTOQUANT_LLM_CMD (default: `opencode run`)."""
+    return _build_argv_from(os.environ.get("AUTOQUANT_LLM_CMD", DEFAULT_CMD),
+                            model, extra)
+
+
+def preflight_for(template: str) -> None:
+    """Raise LLMError if the template's CLI is not on PATH."""
     argv = shlex.split(template)
     if shutil.which(argv[0]) is None:
-        raise LLMError(f"`{argv[0]}` CLI not found on PATH "
-                       f"(AUTOQUANT_LLM_CMD={template!r})")
+        raise LLMError(f"`{argv[0]}` CLI not found on PATH ({template!r})")
+
+
+def parse_compare(spec: str) -> list[tuple[str, str]]:
+    """Parse 'label=cmd,label=cmd' into [(label, template), ...].
+
+    A missing label falls back to the last --model value in the command,
+    else a 6-char hash of the command itself.
+    """
+    pairs: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for raw in spec.split(","):
+        raw = raw.strip()
+        if not raw:
+            continue
+        label, sep, cmd = raw.partition("=")
+        if not sep:
+            # bare command, no '=': the whole entry is the cmd, label auto-derived
+            label, cmd = "", raw
+        else:
+            label = label.strip()
+        cmd = cmd.strip()
+        if not cmd:
+            raise LLMError(f"invalid compare entry {raw!r}: expected 'label=cmd'")
+        if not label:
+            models = re.findall(r"--model\s+(\S+)", cmd)
+            label = models[-1] if models \
+                else hashlib.sha256(cmd.encode()).hexdigest()[:6]
+        if label in seen:
+            raise LLMError(f"duplicate compare label {label!r}")
+        seen.add(label)
+        pairs.append((label, cmd))
+    if not pairs:
+        raise LLMError("no compare entries in compare spec")
+    return pairs
+
+
+def preflight() -> None:
+    """Raise LLMError early if any configured CLI is not on PATH
+    (AUTOQUANT_LLM_CMD plus every AUTOQUANT_LLM_COMPARE candidate)."""
+    preflight_for(os.environ.get("AUTOQUANT_LLM_CMD", DEFAULT_CMD))
+    cmp_spec = os.environ.get("AUTOQUANT_LLM_COMPARE", "")
+    if cmp_spec:
+        for _label, cmd in parse_compare(cmp_spec):
+            preflight_for(cmd)
 
 
 def complete(prompt: str, model: str | None = None,
              extra: list[str] | None = None,
-             timeout: int = CLI_TIMEOUT) -> str:
+             timeout: int = CLI_TIMEOUT,
+             template: str | None = None) -> str:
     """One single-shot CLI completion: prompt in, text out.
+
+    `template` overrides AUTOQUANT_LLM_CMD (used by the compare fan-out);
+    None means the env-configured command.
 
     Raises LLMError on a missing binary, a timeout, or a nonzero exit, so
     callers only need one except clause to produce their error artifact.
     """
-    argv = build_argv(model, extra)
+    argv = (_build_argv_from(template, model, extra) if template is not None
+            else build_argv(model, extra))
     try:
         proc = subprocess.run(argv, input=prompt, capture_output=True,
                               text=True, timeout=timeout)

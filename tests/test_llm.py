@@ -49,6 +49,56 @@ class TestBuildArgv:
             ["opencode", "run", "--verbose", "--max-turns", "1"]
 
 
+class TestParseCompare:
+    def test_label_cmd_pairs(self):
+        assert llm.parse_compare("sonnet=claude -p --model X, opus=claude -p --model Y") == [
+            ("sonnet", "claude -p --model X"), ("opus", "claude -p --model Y")]
+
+    def test_missing_label_falls_back_to_model_flag(self):
+        assert llm.parse_compare("claude -p --model sonnet-4-6") == [
+            ("sonnet-4-6", "claude -p --model sonnet-4-6")]
+
+    def test_missing_label_no_model_flag_hashes_cmd(self):
+        (label, cmd) = llm.parse_compare("opencode run")[0]
+        assert cmd == "opencode run"
+        assert len(label) == 6
+
+    def test_empty_cmd_raises(self):
+        with pytest.raises(llm.LLMError, match="expected 'label=cmd'"):
+            llm.parse_compare("label=, a=b")
+
+    def test_duplicate_label_raises(self):
+        with pytest.raises(llm.LLMError, match="duplicate"):
+            llm.parse_compare("a=cmd1,a=cmd2")
+
+    def test_empty_spec_raises(self):
+        with pytest.raises(llm.LLMError, match="no compare"):
+            llm.parse_compare("  ,  ")
+
+
+class TestBuildArgvFrom:
+    def test_template_placeholder(self):
+        argv = llm._build_argv_from("crush run -q {model}", "m1", None)
+        assert argv == ["crush", "run", "-q", "m1"]
+
+    def test_template_appends_model_flag(self):
+        argv = llm._build_argv_from("claude -p", "m1", None)
+        assert argv == ["claude", "-p", "--model", "m1"]
+
+
+class TestPreflightCompare:
+    def test_preflight_covers_compare_candidates(self, monkeypatch):
+        monkeypatch.setenv("AUTOQUANT_LLM_CMD", "python3")
+        monkeypatch.setenv("AUTOQUANT_LLM_COMPARE", "x=definitely-not-a-real-cli-xyz run")
+        with pytest.raises(llm.LLMError, match="definitely-not-a-real-cli-xyz"):
+            llm.preflight()
+
+    def test_preflight_ok_when_compare_unset(self, monkeypatch):
+        monkeypatch.setenv("AUTOQUANT_LLM_CMD", "python3")
+        monkeypatch.delenv("AUTOQUANT_LLM_COMPARE", raising=False)
+        llm.preflight()
+
+
 class TestPreflight:
     def test_missing_cli_raises(self, monkeypatch):
         monkeypatch.setenv("AUTOQUANT_LLM_CMD", "definitely-not-a-real-cli-xyz -p")

@@ -62,6 +62,26 @@ aborts with one clear message and keeps the work already completed, instead
 of writing an identical error artifact for every remaining item. Parse and
 validation failures never trip it -- those are per-article, not provider
 outages.
+
+### Model comparison (optional, codegen only)
+
+```bash
+python3 codegen.py --compare-models "sonnet=claude -p --model sonnet-4-6,opus=claude -p --model opus-4-6"
+```
+
+Each pending spec is generated once per candidate; artifacts land in
+`strategies/compare/<label>/` (invisible to the normal pipeline) and the run
+ends with a per-label table: coded / smoke-failed / CLI-failed / median
+seconds. The circuit breaker trips per label, so one broken provider does
+not take down the others. Pick a winner manually:
+
+```bash
+python3 codegen.py --pick sonnet --slug <slug>   # -> strategies/<slug>.py
+```
+
+Nothing is auto-selected or ensembled. (Env fallback: `AUTOQUANT_LLM_COMPARE`,
+same `label=cmd` format; its candidates are included in the preflight check.)
+
 ### Data catalog
 
 Universe entries can be bare Yahoo tickers (`SPY`) or catalog ids:

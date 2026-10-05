@@ -160,9 +160,10 @@ def main_with(argv: list[str] | None = None) -> int:
     with args.out.open("a") as fh:
         start = 0
         while new < limit:
+            want = min(PAGE_SIZE, limit - new)
             url = (f"{API}?search_query={requests.utils.quote(query)}"
                    f"&sortBy=submittedDate&sortOrder=descending"
-                   f"&start={start}&max_results={PAGE_SIZE}")
+                   f"&start={start}&max_results={want}")
             try:
                 rows = parse_atom(get(session, url))
             except Exception as exc:

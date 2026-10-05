@@ -20,6 +20,7 @@ tool state, and generated reports stay out of Git.
 ```bash
 python3 harvest.py                # [1] latest Quantocracy links -> data/articles.jsonl
 python3 harvest_cboe.py           # [1] Cboe Insights (RSS; --backfill N for archive)
+python3 harvest_arxiv.py          # [1] arXiv papers (abstract-as-body; --limit N, cap 1000)
 python3 fetch.py                  # [2] article text -> data/pages/
 python3 triage.py                 # [3] backtestability scores -> data/triage.jsonl
 python3 extract.py                # [4] triaged article -> specs/<slug>.yaml
@@ -41,6 +42,11 @@ Insights (RSS latest ~25, or `--backfill N` walking `/insights/?page=N`).
 Both append to the same `data/articles.jsonl` with the same row contract;
 Cboe slugs are prefixed `cboe-` so downstream artifacts never collide.
 `fetch.py` extracts Cboe bodies via the `.prose` container.
+`harvest_arxiv.py` pulls papers from the arXiv API (default categories
+`q-fin*,econ.EM,econ.GN`; `--categories` accepts any list, `--limit` caps at
+1000). Papers skip stage [2] entirely: the abstract is written into the
+fetch cache at harvest time and rows enter as `fetched`. Slugs are prefixed
+`arxiv-`; dedupe is on the canonical arXiv id.
 
 ### Swapping the LLM provider
 

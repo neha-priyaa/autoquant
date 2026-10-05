@@ -357,20 +357,22 @@ class TestPending:
             {"url": "https://a.com/d", "slug": "fetched-already", "stage": "fetched"},
         ]
 
-    def setup(self, specs):
+    # NOT named `setup` -- pytest hijacks that name as an xunit hook and
+    # misresolves its `specs` parameter as a fixture, erroring every test.
+    def write_specs(self, specs):
         specs.mkdir(parents=True)
         (specs / "done.yaml").write_text("meta:\n  slug: done\n")
         (specs / "failed.error").write_text("{}\n")
 
     def test_skips_specd_and_errored(self, tmp_path):
         specs = tmp_path / "specs"
-        self.setup(specs)
+        self.write_specs(specs)
         todo = extract.pending(self.rows(), specs, retry=False)
         assert [r["slug"] for r in todo] == ["fresh"]
 
     def test_retry_reincludes_errored(self, tmp_path):
         specs = tmp_path / "specs"
-        self.setup(specs)
+        self.write_specs(specs)
         todo = extract.pending(self.rows(), specs, retry=True)
         assert [r["slug"] for r in todo] == ["failed", "fresh"]
 

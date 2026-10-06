@@ -1,0 +1,159 @@
+meta:
+  slug: what-happens-after-congress-buys-or-sells-a-stock-evidence
+  title: What Happens After Congress Buys or Sells a Stock? Evidence From 17,859 Disclosures
+  url: https://equibles.com/research/what-happens-after-congress-buys-or-sells-a-stock-evidence-from-17-859-disclosures
+  source: Equibles
+  posted: 2026-08-27
+  claim: 'Buying stocks at the first market close after a congressional purchase disclosure
+    becomes public and holding them for one year beats the S&P 500 over the same window
+    (and purchases differ from sales).
+
+    '
+  author_evidence:
+    sample: 17,859 congressional disclosure events (8,444 purchases, 9,415 sales)
+      from 27,790 PTR rows on 1,601 stocks across 1,168 filing dates, 2 Jan 2020 to
+      18 Aug 2025; price data cut 21 Aug 2026
+    headline_metrics:
+      purchase_1y_relative_median: -0.0536
+      sale_1y_relative_median: -0.0639
+      buy_minus_sell_spread_1y_pts: 1.13
+      spread_t_stat: 1.15
+      purchase_beat_rate: 0.4287
+    costs_included: false
+data:
+  universe: 'US-listed common stocks with a STOCK Act Periodic Transaction Report
+    purchase or sale disclosure; point-in-time source: congressional PTR filings (filing
+    date = public availability date)'
+  bar: 1d
+  fields:
+  - open
+  - high
+  - low
+  - close
+  - volume
+  start: 2020-01-02
+  end: null
+  source: yfinance
+  caveats:
+  - Backtest requires the point-in-time PTR disclosure dataset (transaction date,
+    filing date, ticker, direction) in addition to prices; the article built it from
+    authoritative 12(b)/N-PORT/SIC classification, which may not be fully reproducible.
+  - Article uses raw closes and excludes split-crossing windows; yfinance is split-adjusted,
+    so split handling differs.
+  - Article excludes dividends on both sides; yfinance default is dividend-adjusted
+    unless adjusted=False is used.
+  - 'Survivorship: delisted failures are more likely absent from price sources, biasing
+    stock returns upward (flagged by the author).'
+  - Article uses the exact current primary listing; historical share classes/tickers
+    may be unavailable.
+signal:
+  definition: event set E = PTR disclosures (stock s, public filing date d, direction);
+    raw[s, t] = True for t in [first session strictly after d, +252 sessions); entry
+    only for direction == purchase
+  lookback_bars: 0
+  lag_bars: 1
+rules:
+  entry: 'on each PTR purchase event: buy the stock at the first market close strictly
+    after the public filing date (decision on filing-date bar t, execution at bar
+    t+1 close)'
+  exit: sell at the close 252 market sessions after entry (fixed horizon)
+  direction: long_only
+  position_when_flat: cash
+  sizing: full_notional
+  vol_target: null
+  max_leverage: 1.0
+  rebalance: on_signal_change
+  execution_price: same_close
+costs:
+  commission_bps: 1.0
+  slippage_bps: 5.0
+  borrow_bps_annual: 0.0
+  financing_bps_annual: 0.0
+ambiguities:
+- id: ptr_data_source
+  question: Which point-in-time congressional disclosure dataset is used, and does
+    it reproduce the article's security-type filtering?
+  default: public PTR filings (senate.gov/House efd bulk data) with ticker resolution;
+    no common-stock reclassification beyond excluding obvious funds/funds-like types
+  alternatives:
+  - capitoltrades.com scraped data
+  - hand-collected subset
+  - author's full SIC/N-PORT eligibility pipeline
+  material: true
+- id: direction_tested
+  question: Copy purchases only, or also trade sales (long-short spread)?
+  default: purchases only (long_only); the article's investable copying rule
+  alternatives:
+  - long_short (long buys, short sells)
+  - short_only on sales
+  material: true
+- id: concurrent_event_weighting
+  question: How are multiple same-date events weighted in the portfolio?
+  default: equal weight per event
+  alternatives:
+  - weight by disclosed transaction value
+  - cap events per date
+  - portfolio-level median event return (article's statistic)
+  material: true
+- id: horizon
+  question: Which holding horizon does the backtest target?
+  default: 252
+  alternatives:
+  - 21
+  - 63
+  - 126
+  material: true
+- id: entry_execution_price
+  question: "The article enters at the first close strictly after the filing date\
+    \ \u2014 is that close actually tradable after public availability?"
+  default: 'decision on the filing-date bar, execute at next bar''s close (lag_bars:
+    1, execution same_close), matching the article''s definition'
+  alternatives:
+  - next_open after filing date
+  - same_close of the filing-date bar (risks intraday lookahead if filing publishes
+    before close)
+  material: true
+- id: split_window_handling
+  question: Exclude split-crossing windows as the article does, or rely on split-adjusted
+    prices?
+  default: rely on split-adjusted yfinance closes; do not exclude windows
+  alternatives:
+  - exclude windows crossing a split, as in the article
+  material: false
+- id: benchmark_implementation
+  question: Benchmark as S&P 500 price index (^GSPC) or SPY (total return, dividend-inclusive)?
+  default: S&P 500 price index over identical dates, matching the article's price-return
+    comparison
+  alternatives:
+  - SPY adjusted close
+  material: true
+validation:
+  oos_start: 2026-08-27
+  is_oos_split: publication_date
+  param_sweep:
+    horizon_sessions:
+    - 21
+    - 63
+    - 126
+    - 252
+    direction:
+    - purchase_only
+    - long_short
+  cost_sweep_bps:
+  - 0
+  - 5
+  - 10
+  - 20
+  - 50
+  null_tests:
+  - random_entry_matched_exposure
+  - shifted_window_placebo_252_and_504_sessions
+  - shuffled_signal
+  min_trades: 30
+  multiple_testing:
+    n_tested_so_far: null
+    method: deflated_sharpe
+verdict:
+  status: PENDING
+  reason: null
+  report: reports/what-happens-after-congress-buys-or-sells-a-stock-evidence.md

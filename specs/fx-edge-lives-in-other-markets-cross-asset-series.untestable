@@ -1,0 +1,4 @@
+{
+  "url": "https://aligrithm.com/fx-edge-lives-in-other-markets-cross-asset-series/",
+  "reason": "The article is a survey of three papers whose tradable rules hinge on learned components it does not specify deterministically \u2014 a convex-program-learned 64-asset graph, a GNN over ten currency nodes, and per-country fitted regression coefficients \u2014 so no single runnable rule can be extracted from the text."
+}

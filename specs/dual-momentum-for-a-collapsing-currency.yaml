@@ -1,0 +1,200 @@
+meta:
+  slug: dual-momentum-for-a-collapsing-currency
+  title: Dual Momentum for a Collapsing Currency
+  url: https://miktul.substack.com/p/dual-momentum-for-a-collapsing-currency
+  source: Michael Emre Tulum
+  posted: 2026-08-31
+  claim: 'A weekly dual-momentum rotation (10-week and 25-week nominal-TL momentum,
+    top three assets per lookback, absolute filter with a deposits-or-dollars fallback)
+    across twelve dollar- and lira-side assets beats every single-asset Turkish saver
+    alternative (deposits, dollars, BIST, gold) in CPI-deflated real TL terms over
+    2013-2026.
+
+    '
+  author_evidence:
+    sample: 2013-01 to 2026-08 (13.5 years), twelve-asset Turkish saver universe,
+      all results in CPI-deflated real TL
+    headline_metrics:
+      cagr: 0.117
+      sharpe: null
+      max_dd: null
+      final_multiple_real: 4.7
+      tstat_vs_deposits: 2.4
+      tstat_vs_dollars: 2.2
+    costs_included: true
+data:
+  universe:
+  - SPY
+  - QQQ
+  - GLD
+  - XLE
+  - EFA
+  - EEM
+  - MCHI
+  - INDA
+  - SHY
+  - IEF
+  - BIST100_TR
+  - TL_DEPOSIT_1M
+  bar: 1d
+  fields:
+  - close
+  start: 2012-07-02
+  end: null
+  source: yfinance + CBRT EVDS
+  caveats:
+  - Article names asset classes, not tickers; the ETF mapping above is a chosen default
+    (see ambiguities).
+  - BIST-100 total-return index, USDTRY, TL deposit rates, and CPI come from CBRT
+    EVDS, not yfinance; availability in the local harness unverified.
+  - ETF list is point-in-time in the article (each enters when its ETF existed); using
+    current tickers over full history introduces survivorship bias.
+  - Deposit sleeve uses the weekly flow rate on newly opened <=3m TL deposits with
+    weekly compounding (author notes this slightly flatters deposits).
+  - Real-TL reporting requires monthly official CPI applied to weekly series; interpolation
+    method unspecified.
+signal:
+  definition: 'Convert dollar-ETF closes to nominal TL via USDTRY (px_tl). ret10 =
+    px_tl.pct_change(10 weeks); ret25 = px_tl.pct_change(25 weeks). For each lookback
+    w in {10, 25}: rank assets by ret_w; select top 3; each selected asset must pass
+    the absolute filter (ret_w > 0); a slot whose asset fails is reassigned to whichever
+    of TL_DEPOSIT_1M or the dollar safe asset (SHY) has the higher ret_w. Sleeve weight:
+    1/3 per slot. Final weights = 0.5 * sleeve(10) + 0.5 * sleeve(25), i.e. 1/6 per
+    slot.
+
+    '
+  lookback_bars: 130
+  lag_bars: 1
+rules:
+  entry: asset enters a slot when ranked in the top 3 of its lookback sleeve and its
+    momentum passes the absolute filter
+  exit: asset drops out when it leaves the top-3 ranking or fails the absolute filter;
+    slot rotates to the next-ranked asset or the deposits-or-dollars fallback
+  direction: long_only
+  position_when_flat: alternative_asset
+  sizing: fixed_fraction
+  vol_target: null
+  max_leverage: 1.0
+  rebalance: weekly
+  execution_price: next_open
+costs:
+  commission_bps: 10.0
+  slippage_bps: 0.0
+  borrow_bps_annual: 0.0
+  financing_bps_annual: 0.0
+ambiguities:
+- id: etf_mapping
+  question: "The article names asset classes (short/medium Treasuries, gold, energy,\
+    \ S&P 500, Nasdaq, developed, EM, China, India), not tickers \u2014 which exact\
+    \ ETFs?"
+  default:
+  - SPY
+  - QQQ
+  - GLD
+  - XLE
+  - EFA
+  - EEM
+  - MCHI
+  - INDA
+  - SHY
+  - IEF
+  alternatives:
+  - - VOO
+    - QQQ
+    - IAU
+    - IYE
+    - VEA
+    - VWO
+    - FXI
+    - EPHE
+    - BIL
+    - IEI
+  material: true
+- id: absolute_filter_lookback
+  question: Which lookback defines 'rising in its own right' for the absolute filter?
+  default: the sleeve's own lookback (10-week sleeve uses 10-week momentum, 25-week
+    uses 25-week)
+  alternatives:
+  - positive on both lookbacks
+  - positive on 10-week only
+  material: true
+- id: fallback_momentum_lookback
+  question: Which momentum window decides deposits-vs-dollars for a filtered-out slot?
+  default: 10-week momentum
+  alternatives:
+  - 25-week momentum
+  - blend of both
+  material: true
+- id: fallback_dollar_asset
+  question: What exactly is the 'dollar' fallback asset when a slot retreats to safety?
+  default: SHY (short-term US Treasuries, matching the article's dollar-holding description)
+  alternatives:
+  - USD cash at 0%
+  - IEF medium Treasuries
+  material: false
+- id: execution_timing
+  question: Is the Wednesday signal computed on that day's close, and can it be traded
+    at the same close?
+  default: next_open with lag_bars 1
+  alternatives:
+  - same_close
+  material: false
+- id: cost_decomposition
+  question: "The article's 10 bps per trade is all-in \u2014 how is it split between\
+    \ commission and slippage?"
+  default: commission 10 bps / slippage 0 bps per side
+  alternatives:
+  - 1 bp commission + 5 bp slippage per side
+  - 25 bps all-in retail
+  material: true
+- id: deposit_implementation
+  question: "The TL deposit sleeve needs the weekly flow rate on <=3-month deposits\
+    \ plus weekly rolling \u2014 is this series available to the harness?"
+  default: CBRT EVDS weekly deposit flow rate, rolled weekly with compounding; if
+    unavailable, run the author's 10-ETF implementable subset
+  alternatives:
+  - monthly average rate instead of flow rate
+  - ETF-only subset
+  material: true
+- id: cpi_deflation_convention
+  question: How is monthly official CPI mapped onto weekly returns for real-TL reporting?
+  default: apply the latest published monthly inflation rate to each week until the
+    next CPI print
+  alternatives:
+  - interpolate daily inflation within the month
+  material: false
+- id: universe_entry_dates
+  question: "ETFs enter the list only when they existed \u2014 are listing dates enforced\
+    \ point-in-time, or do current tickers run from 2013?"
+  default: enforce each ETF's actual first trading date; before listing the asset
+    is ineligible
+  alternatives:
+  - use full history for all current tickers (survivorship-biased)
+  material: true
+validation:
+  oos_start: 2026-08-31
+  is_oos_split: publication_date
+  param_sweep:
+    lookback_bars:
+    - 5
+    - 10
+    - 15
+    - 20
+    - 25
+    - 30
+  cost_sweep_bps:
+  - 0
+  - 10
+  - 25
+  - 50
+  null_tests:
+  - random_entry_matched_exposure
+  - shuffled_signal
+  min_trades: 30
+  multiple_testing:
+    n_tested_so_far: null
+    method: deflated_sharpe
+verdict:
+  status: PENDING
+  reason: null
+  report: reports/dual-momentum-for-a-collapsing-currency.md

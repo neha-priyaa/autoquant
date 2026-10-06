@@ -1,0 +1,154 @@
+meta:
+  slug: price-path-convexity-a-new-cross-sectional-anomaly
+  title: 'Price-Path Convexity: A New Cross-Sectional Anomaly'
+  url: https://aligrithm.com/price-path-convexity-a-new-cross-sectional-anomaly-45bp-per-s-2/
+  source: Aligrithm
+  posted: 2026-08-16
+  claim: 'A monthly-rebalanced long-short portfolio that is long the lowest-convexity
+    quintile and short the highest-convexity quintile of US common stocks (convexity
+    = (midpoint of first and last close minus mean of the month''s daily closes) divided
+    by that midpoint) earns a positive next-month spread of about 0.84% gross before
+    transaction costs.
+
+    '
+  author_evidence:
+    sample: Approx. 1963-2023 (sixty years), all NYSE/AMEX/NASDAQ common stocks, monthly
+      value-weighted quintile sorts
+    headline_metrics:
+      long_short_spread_monthly: 0.0084
+      t_stat: 6.29
+      sharpe_monthly: 0.23
+      sharpe_annualized: 0.8
+      fama_macbeth_slope_per_1sd: -0.0045
+      fama_macbeth_t: -11.15
+    costs_included: false
+data:
+  universe: All NYSE, AMEX, and NASDAQ common stocks at each month-end (point-in-time
+    membership; no pre-filtering by size or liquidity beyond common-stock classification)
+  bar: 1d
+  fields:
+  - close
+  start: 1963-07-01
+  end: null
+  source: yfinance
+  caveats:
+  - "Article uses the full CRSP point-in-time universe; yfinance cannot reproduce\
+    \ it \u2014 no point-in-time membership, delisted names absent (severe survivorship\
+    \ bias for a short-horizon anomaly)."
+  - "yfinance closes are split/dividend adjusted; the paper's convexity is built from\
+    \ raw (price-only) dollar changes \u2014 adjustment changes the curvature variable."
+  - Value weighting requires shares outstanding / market cap, which must be sourced
+    separately; falls back per ambiguities if unavailable.
+signal:
+  definition: 'At the last trading bar of each month, take the trailing N=21 daily
+    closes. p1 = close[-21], pN = close[-1], mid = (p1 + pN) / 2, mean_p = close[-21:].mean();
+    convexity = (mid - mean_p) / mid. Rank all names cross-sectionally; lowest quintile
+    = long leg, highest quintile = short leg, weights proportional to market cap within
+    each leg (value-weighted).
+
+    '
+  lookback_bars: 21
+  lag_bars: 1
+rules:
+  entry: At each month-end signal, hold long the lowest-convexity quintile and short
+    the highest-convexity quintile, dollar-neutral legs, value-weighted within each
+    quintile
+  exit: Positions are replaced at the next month-end rebalance; names leaving the
+    leg are closed, names entering are opened
+  direction: long_short
+  position_when_flat: cash
+  sizing: fixed_fraction
+  vol_target: null
+  max_leverage: 2.0
+  rebalance: monthly
+  execution_price: next_open
+costs:
+  commission_bps: 1.0
+  slippage_bps: 5.0
+  borrow_bps_annual: 0.0
+  financing_bps_annual: 0.0
+ambiguities:
+- id: execution_timing
+  question: "Convexity is computed on the month-end close \u2014 can the rebalance\
+    \ trade that same close?"
+  default: next_open
+  alternatives:
+  - same_close
+  material: true
+- id: quintile_breakpoints
+  question: Are quintile breakpoints computed on the full cross-section or NYSE-only
+    (the standard CRSP convention)?
+  default: full_sample_breakpoints
+  alternatives:
+  - nyse_breakpoints
+  material: false
+- id: month_window
+  question: "Exactly which closes define 'the month' \u2014 calendar-month closes\
+    \ or a trailing 21-trading-day window at month-end?"
+  default: trailing_21_trading_days
+  alternatives:
+  - calendar_month_closes
+  material: false
+- id: weighting_scheme
+  question: Value weights require point-in-time market cap; if unavailable, how are
+    names weighted within each quintile leg?
+  default: equal_weight_fallback_when_no_cap
+  alternatives:
+  - equal_weight
+  - value_weight
+  material: true
+- id: leg_capital_split
+  question: How is capital split between the long and short legs of the zero-investment
+    spread?
+  default: dollar_neutral_100pct_per_leg
+  alternatives:
+  - half_capital_per_leg
+  material: false
+- id: short_borrow_cost
+  question: What borrow cost do shorts pay? The article reports gross returns and
+    never states borrow fees for hard-to-borrow small names.
+  default: 0_borrow_annual
+  alternatives:
+  - 100_bps_annual_flat
+  - 400_bps_annual_for_small_caps
+  material: true
+- id: universe_coverage
+  question: "The article's universe is the entire point-in-time US common-stock cross-section;\
+    \ the reproducible universe is a survivorship-biased survivor list \u2014 how\
+    \ is coverage handled?"
+  default: test_on_available_surviving_tickers_with_explicit_caveat
+  alternatives:
+  - restrict_to_large_liquid_subset
+  - declare_unreplicable_without_crsp
+  material: true
+validation:
+  oos_start: 2026-08-16
+  is_oos_split: publication_date
+  param_sweep:
+    lookback_bars:
+    - 10
+    - 15
+    - 21
+    - 42
+    n_quintiles:
+    - 3
+    - 5
+    - 10
+  cost_sweep_bps:
+  - 0
+  - 5
+  - 10
+  - 20
+  - 50
+  - 100
+  null_tests:
+  - random_entry_matched_exposure
+  - shuffled_signal
+  min_trades: 30
+  multiple_testing:
+    n_tested_so_far: null
+    method: deflated_sharpe
+verdict:
+  status: PENDING
+  reason: null
+  report: reports/price-path-convexity-a-new-cross-sectional-anomaly.md

@@ -1,4 +1,0 @@
-{
-  "url": "https://www.tradequantixnewsletter.com/p/momentum-mini-portfolio-development-302",
-  "reason": "The article describes the system only at a high level and never states the momentum ranking definition/lookback, the exact ranking cadence, or the trailing stop level, so the signal and exit cannot be reconstructed as deterministic rules."
-}

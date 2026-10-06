@@ -1,4 +1,0 @@
-{
-  "url": "https://quantpedia.com/do-llm-crowds-produce-investment-signals-an-empirical-test/?a=6080",
-  "reason": "The strategy's signal is the output of non-reproducible GPT-4o persona queries \u2014 the 50 consensus tickers are never enumerated and the selection is not a deterministic function of market data \u2014 so entry/exit cannot be expressed from price history."
-}

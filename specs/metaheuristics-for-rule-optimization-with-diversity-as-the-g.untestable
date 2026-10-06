@@ -1,4 +1,0 @@
-{
-  "url": "https://aligrithm.com/metaheuristics-for-rule-optimization-with-diversity-as-the-guardrail/",
-  "reason": "The article describes the MA-crossover rule structure and its eight-parameter ranges but never reports any concrete parameter values, and any lengths or exit factors chosen from the optimized ranges would be invented, fitted parameters rather than a rule the author stated."
-}

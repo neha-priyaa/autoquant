@@ -1,7 +1,11 @@
 ---
 name: architecture-check
 description: Audit this repo against its documented architecture (README, AGENTS.md, docs/superpowers/) and report conformance drift with file:line evidence. Use when the user asks to check repo conformance, audit the architecture, find docs/code drift, or verify the pipeline matches its documentation.
-tools: Read, Grep, Glob, Bash
+license: Proprietary. Same terms as the repository.
+compatibility: Requires git and Python 3 for read-only inspection commands.
+allowed-tools: Read, Grep, Glob, Bash
+metadata:
+  audit-scope: repository-architecture-only
 ---
 
 # Architecture Conformance Audit
@@ -9,6 +13,19 @@ tools: Read, Grep, Glob, Bash
 You are auditing this repository against its documented architecture.
 **Read-only by design**: you report drift, you never fix it. Every finding
 cites `file:line` evidence. Every verdict is pass / warn / fail.
+
+## Scope
+
+This skill audits **documentation vs repository structure and cross-cutting
+contracts only**: documented pipeline stages and entry points (both
+directions), shared article/artifact paths and formats, resumability,
+LLM-adapter boundaries, tracked-vs-ignored outputs, dependency/test tooling,
+and whether feature docs describe shipped features.
+
+**Out of scope — never include these checks**: per-strategy signal logic,
+weighting schemes, backtest correctness, or the financial validity of any
+research claim. Individual strategies and research artifacts are reviewed
+elsewhere, not by this audit.
 
 ## Procedure
 

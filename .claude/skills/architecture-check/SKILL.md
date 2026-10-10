@@ -1,6 +1,6 @@
 ---
 name: architecture-check
-description: Audit this repo against its documented architecture (README, AGENTS.md, docs/superpowers/) and report conformance drift with file:line evidence. Use when the user asks to check repo conformance, audit the architecture, find docs/code drift, or verify the pipeline matches its documentation.
+description: Audit this repo against its documented architecture (README, AGENTS.md, docs/plans/, docs/superpowers/) and report conformance drift with file:line evidence. Use when the user asks to check repo conformance, audit the architecture, find docs/code drift, or verify the pipeline matches its documentation.
 license: Proprietary. Same terms as the repository.
 compatibility: Requires git and Python 3 for read-only inspection commands.
 allowed-tools: Read, Grep, Glob, Bash
@@ -39,15 +39,18 @@ The documents always win.
    ("independent and resumable", what is committed vs ignored), the LLM
    adapter section, the article-sources section, the data-catalog section.
 2. `AGENTS.md` — working guidelines.
-3. `ls docs/superpowers/plans/ docs/superpowers/specs/` — feature history.
+3. `ls docs/plans/ docs/superpowers/plans/ docs/superpowers/specs/` —
+   feature history.
 
 ### Step 2 — Pipeline vs README
 
 - Extract the documented stage table from the README. For each listed
-  entry point, confirm the script exists and runs: `python3 <script> --help`
-  (exit 0). Record any documented stage whose script is missing or broken.
-- Reverse direction: `git ls-files '*.py'` (plus an `ls` for untracked
-  scripts) — flag any script that looks pipeline-participating (reads or
+  entry point, confirm the script exists and runs:
+  `uv run python <script>.py --help` (exit 0, per AGENTS.md tooling).
+  Record any documented stage whose script is missing or broken.
+- Reverse direction: `git ls-files '*.py'` (plus untracked `*.py` from
+  `git status --porcelain` at repo root or in pipeline directories) — flag
+  any script that looks pipeline-participating (reads or
   writes `data/articles.jsonl`, `data/pages/`, `data/triage.jsonl`,
   `specs/`, `strategies/`, or `results/`) but is absent from the README's
   stage table.
@@ -68,7 +71,11 @@ The documents always win.
 
 - The three LLM stages (triage.py, extract.py, codegen.py) must reach the
   LLM CLI only through `llm.py`: `grep -n "subprocess\|os.system\|Popen"
-  triage.py extract.py codegen.py` — any hit outside llm.py is a fail.
+  triage.py extract.py codegen.py`. Hits are **leads for inspection, not
+  automatic failures** — fail only if a hit invokes the LLM CLI directly,
+  bypassing `llm.py` (e.g. builds the `AUTOQUANT_LLM_CMD` command itself).
+  Unrelated subprocess use (isolated backtest processes, `git` calls) is
+  not an architecture violation.
 - Compare the README's LLM section against `llm.py` reality: env vars
   (`AUTOQUANT_LLM_CMD`, `AUTOQUANT_LLM_EXTRA_ARGS`), `{model}` placeholder
   behavior, `--llm-arg`, preflight, and the circuit breaker (k=3, CLI-level
@@ -79,26 +86,42 @@ The documents always win.
 
 ### Step 4 — Git hygiene
 
-- README claims specs, strategy code, and `results/leaderboard.jsonl` are
-  committed while page caches, price caches, and full reports stay out.
-  Verify: `.gitignore` covers `data/pages/`, `data/catalog/` (or the
-  documented cache paths) and does NOT cover `specs/`, `strategies/`,
-  `results/leaderboard.jsonl`. Use `git check-ignore -v <path>` and
-  `git ls-files` for evidence.
+- **Derive the tracking policy from the README** — read its
+  artifact-tracking prose and classify each documented artifact class
+  (pipeline working artifacts, page/price caches, reports) as committed
+  or local-only. Do NOT assume any particular policy; the README wins.
+- Verify the documented policy against reality with `git check-ignore -v
+  <path>` and `git ls-files <path>` for each class. A path documented as
+  committed that is ignored or untracked is a fail; a path documented as
+  ignored that is tracked is a fail. **Untracked-but-ignored generated
+  artifacts (e.g. `specs/`, `strategies/`, `results/` staying local and
+  regenerable) are correct behavior, not drift** — never flag the
+  local-artifact policy itself.
 
 ### Step 5 — AGENTS.md spot-checks
 
-- `grep -rn "type: ignore" --include="*.py" .` — any hit is a fail.
-- `find . -name "*.py" -perm -111 -not -path "./.git/*"` — executable-bit
-  Python files are a fail (daemons/executables are against guidelines).
+- **Scope every scan to repository-owned code** — prefer `git grep` /
+  `git ls-files` (tracked files only) so virtual environments, third-party
+  dependencies, ignored local artifacts, and reference copies never enter
+  the scan. Blind recursive scans of the working tree report dependency
+  code as project violations.
+- `git grep -n "type: ignore" -- '*.py'` — any hit is a fail.
+- Executable-bit Python files are a fail (daemons/executables are against
+  guidelines):
+  `git ls-files '*.py' | while read f; do [ -x "$f" ] && echo "$f"; done`
+- Preserve an explicitly scoped check for untracked project scripts:
+  `git status --porcelain` untracked `*.py` at repo root or in pipeline
+  directories is in scope and worth flagging (warn); untracked files under
+  ignored paths are expected and out of scope.
 - TOML reading uses stdlib `tomllib` (grep `tomllib|toml.load|pytoml`).
 - Tests parallel to source layout: a module `<root>.py` has its tests at
   `tests/test_<root>.py` (flat layout, so `tests/test_<module>.py`).
 
 ### Step 6 — Docs ↔ reality
 
-- Every `docs/superpowers/plans/*.md` and `specs/*.md` describes a feature
-  that exists: spot-check that files/flags/functions the docs name are
+- Every doc under `docs/plans/*.md`, `docs/superpowers/plans/*.md`, and
+  `docs/superpowers/specs/*.md` describes a feature that exists: spot-check
+  that files/flags/functions the docs name are
   present (`Glob`/`Grep`). Flag docs describing abandoned features and
   shipped features missing their plan doc (warn, not fail).
 - Re-read AGENTS.md's "Running the project" section: its tooling claims

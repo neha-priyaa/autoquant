@@ -61,3 +61,26 @@ class TestDataNotAvailable:
     def test_range_miss(self, shims):
         with pytest.raises(shims["_aqdata"].DataNotAvailable):
             shims["_aqdata"].frame_for("AAPL", "2025-01-01", "2025-12-31")
+
+
+class TestYFinance:
+    def test_download_single(self, shims):
+        df = shims["yfinance"].download("AAPL", start="2020-01-01")
+        assert list(df.columns) == ["open", "high", "low", "close", "volume"]
+        assert len(df) == 2
+
+    def test_download_multi_returns_multiindex(self, shims, data_root):
+        Prices.to_csv(data_root / "data" / "prices" / "MSFT.csv")
+        panel = shims["yfinance"].download(["AAPL", "MSFT"])
+        assert isinstance(panel.columns, pd.MultiIndex)
+        assert set(panel.columns.get_level_values(0)) == {"AAPL", "MSFT"}
+
+    def test_download_miss_raises_clean(self, shims):
+        with pytest.raises(shims["_aqdata"].DataNotAvailable):
+            shims["yfinance"].download("ZZZZZ")
+
+    def test_ticker_history(self, shims):
+        df = shims["yfinance"].Ticker("AAPL").history(start="2020-01-01",
+                                                      end="2020-01-31")
+        assert len(df) == 2
+        assert "close" in df.columns

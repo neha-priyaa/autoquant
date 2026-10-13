@@ -62,6 +62,10 @@ class TestDataNotAvailable:
         with pytest.raises(shims["_aqdata"].DataNotAvailable):
             shims["_aqdata"].frame_for("AAPL", "2025-01-01", "2025-12-31")
 
+    def test_lowercase_symbol_falls_back_to_upper_cache(self, shims):
+        df = shims["_aqdata"].frame_for("aapl")
+        assert len(df) == 2
+
 
 class TestYFinance:
     def test_download_single(self, shims):
@@ -84,6 +88,24 @@ class TestYFinance:
                                                       end="2020-01-31")
         assert len(df) == 2
         assert "close" in df.columns
+
+    def test_download_warns_on_period(self, shims, capsys):
+        shims["yfinance"].download("AAPL", period="1y")
+        assert "period" in capsys.readouterr().err
+
+    def test_download_period_max_is_silent(self, shims, capsys):
+        shims["yfinance"].download("AAPL", period="max")
+        assert capsys.readouterr().err == ""
+
+    def test_download_warns_on_interval_and_actions(self, shims, capsys):
+        shims["yfinance"].download("AAPL", interval="1h", actions=True)
+        err = capsys.readouterr().err
+        assert "interval" in err
+        assert "actions" in err
+
+    def test_history_warns_on_period(self, shims, capsys):
+        shims["yfinance"].Ticker("AAPL").history(period="1y")
+        assert "period" in capsys.readouterr().err
 
 
 class TestPandasDatareader:

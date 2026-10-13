@@ -36,11 +36,17 @@ def data_root() -> Path:
 def _candidates(symbol: str, source: str) -> list[Path]:
     root = data_root()
     safe = symbol.replace("/", "_")
-    out = [root / "data" / "prices" / f"{safe}.csv"]
-    if source != "yahoo":
-        out.insert(0, root / "data" / "catalog" / f"{source}_{safe}.csv")
-    else:
-        out.append(root / "data" / "catalog" / f"yahoo_{safe}.csv")
+    catalog = root / "data" / "catalog" / f"{source}_{safe}.csv"
+    prices = root / "data" / "prices" / f"{safe}.csv"
+    out = [catalog, prices] if source != "yahoo" else [prices, catalog]
+    upper = safe.upper()
+    if upper != safe:
+        # Cache files are case-sensitive; real yahoo symbols are not, so try
+        # the upper-case spellings as a fallback.
+        cat_up = root / "data" / "catalog" / f"{source}_{upper}.csv"
+        pri_up = root / "data" / "prices" / f"{upper}.csv"
+        extra = [cat_up, pri_up] if source != "yahoo" else [pri_up, cat_up]
+        out.extend(p for p in extra if p not in out)
     return out
 
 

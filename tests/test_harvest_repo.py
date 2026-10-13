@@ -65,6 +65,14 @@ class TestScan:
         m = hr.scan(r)
         assert m["notebooks"][0]["unparsable"] is True
 
+    def test_broken_symlink_does_not_crash(self, tmp_path):
+        import os
+        r = make_repo(tmp_path)
+        os.symlink("/nonexistent", r / "broken.csv")
+        m = hr.scan(r)
+        by_path = {d["path"]: d for d in m["data_files"]}
+        assert by_path["broken.csv"]["bytes"] == 0
+
 
 class TestHarvestOne:
     def test_clones_and_writes_manifest(self, tmp_path, monkeypatch):
@@ -99,6 +107,14 @@ class TestHarvestOne:
         monkeypatch.setattr(hr, "remote_sha", lambda r: None)
         status, detail = hr.harvest_one("o/gone", tmp_path)
         assert status == "error"
+
+    def test_malformed_slug_is_error_before_network(self, tmp_path, monkeypatch):
+        def boom(r):
+            raise AssertionError("remote_sha must not be called")
+        monkeypatch.setattr(hr, "remote_sha", boom)
+        status, detail = hr.harvest_one("..", tmp_path)
+        assert status == "error"
+        assert "expected OWNER/REPO" in detail
 
 
 class TestMainWith:

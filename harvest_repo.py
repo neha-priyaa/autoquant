@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -44,6 +45,7 @@ DEP_KEYS = {"requirements.txt": "requirements_txt", "environment.yml": "environm
             "setup.py": "setup_py", "pyproject.toml": "pyproject_toml"}
 SKIP_DIRS = {".git", ".ipynb_checkpoints", "__pycache__", ".venv", "venv",
              "node_modules"}
+SLUG_RE = re.compile(r"[A-Za-z0-9._-]+/[A-Za-z0-9._-]+")
 
 
 def repo_slug(owner_repo: str) -> str:
@@ -75,7 +77,8 @@ def clone(owner_repo: str, dest: Path) -> None:
 
 def _is_spec_text(path: Path) -> bool:
     try:
-        head = path.read_text(errors="ignore")[:4000].lower()
+        with path.open(errors="ignore") as fh:
+            head = fh.read(4000).lower()
     except OSError:
         return False
     return any(k in head for k in SPEC_TEXT_KEYWORDS)
@@ -120,7 +123,11 @@ def scan(repo_dir: Path) -> dict:
         elif path.suffix in SPEC_TEXT_EXTS and _is_spec_text(path):
             spec_texts.append({"path": rel})
         elif path.suffix in DATA_EXTS:
-            data_files.append({"path": rel, "bytes": path.stat().st_size})
+            try:
+                size = path.stat().st_size
+            except OSError:
+                size = 0  # e.g. broken symlink — record with 0 bytes
+            data_files.append({"path": rel, "bytes": size})
     return {"notebooks": notebooks, "scripts": scripts, "spec_texts": spec_texts,
             "data_files": data_files, "deps": deps}
 
@@ -128,6 +135,8 @@ def scan(repo_dir: Path) -> dict:
 def harvest_one(owner_repo: str, out_root: Path) -> tuple[str, str]:
     """Clone + manifest one repo. Returns (status, detail):
     status is 'ok' | 'skip' | 'error'."""
+    if not SLUG_RE.fullmatch(owner_repo):
+        return "error", f"{owner_repo}: expected OWNER/REPO"
     dest = out_root / repo_slug(owner_repo)
     manifest_path = dest / "manifest.json"
     try:
@@ -147,14 +156,19 @@ def harvest_one(owner_repo: str, out_root: Path) -> tuple[str, str]:
         clone(owner_repo, dest)
     except (RuntimeError, subprocess.TimeoutExpired, OSError) as exc:
         return "error", f"{owner_repo}: {exc}"
-    manifest = scan(dest)
+    try:
+        manifest = scan(dest)
+    except OSError as exc:
+        return "error", f"{owner_repo}: scan failed: {exc}"
     manifest.update({
         "repo": owner_repo,
         "sha": sha,
         "cloned_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     })
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
-    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+    tmp = manifest_path.with_suffix(manifest_path.suffix + ".tmp")
+    tmp.write_text(json.dumps(manifest, indent=2) + "\n")
+    tmp.replace(manifest_path)
     counts = {k: len(manifest[k]) for k in
               ("notebooks", "scripts", "spec_texts", "data_files")}
     return "ok", f"{owner_repo} @ {sha[:12]}  {counts}"
@@ -180,11 +194,12 @@ def main_with(argv: list[str] | None = None) -> int:
     ok = skip = failed = 0
     for repo in repos:
         status, detail = harvest_one(repo, args.out)
-        print(detail)
         if status == "ok":
             ok += 1
+            print(detail)
         elif status == "skip":
             skip += 1
+            print(detail)
         else:
             failed += 1
             print(detail, file=sys.stderr)

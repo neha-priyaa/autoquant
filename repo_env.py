@@ -119,3 +119,45 @@ def ensure_env(repo_dir: Path, manifest: dict) -> dict:
         info["key"] = key
         state_path.write_text(json.dumps(info) + "\n")
     return info
+
+
+def legacy_env(repo_dir: Path) -> dict:
+    """Fallback venv (.venv-legacy): older Python + pandas 1.x-era pins.
+    Built on demand and reused (no hash key — a fixed pin set)."""
+    state_path = _state_path(repo_dir)
+    if state_path.exists():
+        try:
+            state = json.loads(state_path.read_text())
+            if state.get("env") == "venv-legacy":
+                return state
+        except (json.JSONDecodeError, OSError):
+            pass
+    venv = repo_dir / ".venv-legacy"
+    python = venv / "bin" / "python"
+    rc, err = _run(["uv", "venv", "--python", LEGACY_PYTHON, str(venv)])
+    if rc != 0:
+        return {"env": "unsupported", "reason": f"legacy uv venv failed: {err}"}
+    rc, err = _pip_install(python, LEGACY_PINS)
+    if rc != 0:
+        return {"env": "unsupported", "reason": f"legacy pip install failed: {err}"}
+    info = {"env": "venv-legacy", "python": str(python)}
+    state_path.write_text(json.dumps(info) + "\n")
+    return info
+
+
+def has_pins(deps_text: str) -> bool:
+    """True when any dependency declares a version constraint."""
+    return any(op in deps_text for op in ("==", ">=", "<=", "~=", "!=", ">", "<"))
+
+
+LEGACY_MARKERS = ("has no attribute", "unexpected keyword", "removed in",
+                  "not a function", "cannot import name")
+
+
+def legacy_worth_retry(error: str, env_used: str, has_pins: bool) -> bool:
+    """Retry in the legacy env only when: the failure looks like a
+    pandas/numpy API mismatch, the repo declared no pins, and we have not
+    already retried there."""
+    if env_used != "main" or has_pins:
+        return False
+    return any(m in error for m in LEGACY_MARKERS)

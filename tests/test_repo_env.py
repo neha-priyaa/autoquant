@@ -71,3 +71,33 @@ class TestEnsureEnv:
         (tmp_path / "setup.py").write_text("from setuptools import setup\nsetup()\n")
         info = re_.ensure_env(tmp_path, manifest_with(setup_py="setup.py"))
         assert info["env"] == "unsupported"
+
+
+class TestLegacy:
+    def test_builds_legacy_venv_once(self, tmp_path, monkeypatch):
+        calls = []
+        monkeypatch.setattr(re_, "_run", lambda cmd: calls.append(cmd) or (0, ""))
+        info = re_.legacy_env(tmp_path)
+        assert info["env"] == "venv-legacy"
+        assert ".venv-legacy" in info["python"]
+        assert any("pandas<1.4" in " ".join(c) for c in calls)
+        assert len([c for c in calls if "uv" in c[0]]) >= 2
+        calls.clear()
+        re_.legacy_env(tmp_path)  # second call reuses
+        assert calls == []
+
+    def test_has_pins(self, tmp_path):
+        assert re_.has_pins("pandas==1.3.0\n") is True
+        assert re_.has_pins("pandas\nnumpy\n") is False
+        assert re_.has_pins("") is False
+
+    def test_legacy_worth_retry(self):
+        assert re_.legacy_worth_retry(
+            "AttributeError: module 'pandas' has no attribute 'xyz'",
+            env_used="main", has_pins=False) is True
+        assert re_.legacy_worth_retry(
+            "AttributeError: ...", env_used="venv-legacy", has_pins=False) is False
+        assert re_.legacy_worth_retry(
+            "AttributeError: ...", env_used="main", has_pins=True) is False
+        assert re_.legacy_worth_retry(
+            "error: file not found", env_used="main", has_pins=False) is False

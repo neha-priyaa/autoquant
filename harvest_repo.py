@@ -153,7 +153,48 @@ def harvest_one(owner_repo: str, out_root: Path) -> tuple[str, str]:
         "sha": sha,
         "cloned_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     })
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
     counts = {k: len(manifest[k]) for k in
               ("notebooks", "scripts", "spec_texts", "data_files")}
     return "ok", f"{owner_repo} @ {sha[:12]}  {counts}"
+
+
+def main_with(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("repos", nargs="*", metavar="OWNER/REPO",
+                    help="GitHub repos to clone and inventory")
+    ap.add_argument("--repos-file", type=Path, default=None,
+                    help="file with one OWNER/REPO per line")
+    ap.add_argument("--out", type=Path, default=REPOS)
+    args = ap.parse_args(argv)
+
+    repos = list(args.repos)
+    if args.repos_file:
+        repos += [line.strip() for line in
+                  args.repos_file.read_text().splitlines() if line.strip()]
+    if not repos:
+        sys.exit("error: give OWNER/REPO args or --repos-file")
+
+    args.out.mkdir(parents=True, exist_ok=True)
+    ok = skip = failed = 0
+    for repo in repos:
+        status, detail = harvest_one(repo, args.out)
+        print(detail)
+        if status == "ok":
+            ok += 1
+        elif status == "skip":
+            skip += 1
+        else:
+            failed += 1
+            print(detail, file=sys.stderr)
+    print(f"\n{ok} cloned, {skip} skipped, {failed} failed -> {args.out}")
+    return 1 if failed == len(repos) else 0
+
+
+def main() -> int:
+    return main_with()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

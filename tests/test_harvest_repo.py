@@ -64,3 +64,64 @@ class TestScan:
         (r / "broken.ipynb").write_text("{not json")
         m = hr.scan(r)
         assert m["notebooks"][0]["unparsable"] is True
+
+
+class TestHarvestOne:
+    def test_clones_and_writes_manifest(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(hr, "remote_sha", lambda r: "a" * 40)
+        calls = []
+        monkeypatch.setattr(hr, "clone", lambda repo, dest: calls.append((repo, dest)))
+        status, detail = hr.harvest_one("o/r", tmp_path)
+        assert status == "ok"
+        assert calls == [("o/r", tmp_path / "o-r")]
+        m = json.loads((tmp_path / "o-r" / "manifest.json").read_text())
+        assert m["repo"] == "o/r" and m["sha"] == "a" * 40
+        assert "cloned_at" in m
+
+    def test_skip_when_same_sha(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(hr, "remote_sha", lambda r: "a" * 40)
+        dest = tmp_path / "o-r"
+        dest.mkdir()
+        (dest / "manifest.json").write_text(json.dumps({"sha": "a" * 40}))
+        status, _ = hr.harvest_one("o/r", tmp_path)
+        assert status == "skip"
+
+    def test_reclone_when_sha_changed(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(hr, "remote_sha", lambda r: "b" * 40)
+        monkeypatch.setattr(hr, "clone", lambda repo, dest: None)
+        dest = tmp_path / "o-r"
+        dest.mkdir()
+        (dest / "manifest.json").write_text(json.dumps({"sha": "a" * 40}))
+        status, _ = hr.harvest_one("o/r", tmp_path)
+        assert status == "ok"
+
+    def test_unreachable_repo_is_error_not_crash(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(hr, "remote_sha", lambda r: None)
+        status, detail = hr.harvest_one("o/gone", tmp_path)
+        assert status == "error"
+
+
+class TestMainWith:
+    def test_reports_and_exits_zero(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(hr, "REPOS", tmp_path / "repos")
+        monkeypatch.setattr(hr, "remote_sha", lambda r: "a" * 40)
+        monkeypatch.setattr(hr, "clone", lambda repo, dest: None)
+        rc = hr.main_with(["o/r"])
+        assert rc == 0
+        assert (tmp_path / "repos" / "o-r" / "manifest.json").exists()
+
+    def test_repos_file(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(hr, "REPOS", tmp_path / "repos")
+        monkeypatch.setattr(hr, "remote_sha", lambda r: "a" * 40)
+        monkeypatch.setattr(hr, "clone", lambda repo, dest: None)
+        repos_file = tmp_path / "repos.txt"
+        repos_file.write_text("o/one\no/two\n")
+        rc = hr.main_with(["--repos-file", str(repos_file)])
+        assert rc == 0
+        assert (tmp_path / "repos" / "o-one" / "manifest.json").exists()
+        assert (tmp_path / "repos" / "o-two" / "manifest.json").exists()
+
+    def test_all_errors_exit_nonzero(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(hr, "REPOS", tmp_path / "repos")
+        monkeypatch.setattr(hr, "remote_sha", lambda r: None)
+        assert hr.main_with(["o/gone"]) != 0

@@ -72,6 +72,28 @@ class TestEnsureEnv:
         info = re_.ensure_env(tmp_path, manifest_with(setup_py="setup.py"))
         assert info["env"] == "unsupported"
 
+    def test_env_yml_with_pip_builds_venv(self, tmp_path, monkeypatch):
+        (tmp_path / "environment.yml").write_text(
+            "name: q\ndependencies:\n  - python=3.7\n  - pip:\n    - pandas==0.25\n")
+        calls = []
+        monkeypatch.setattr(re_, "_run", lambda cmd: calls.append(cmd) or (0, ""))
+        info = re_.ensure_env(tmp_path, manifest_with(environment_yml="environment.yml"))
+        assert info["env"] == "venv"
+        install = " ".join(calls[-1])
+        assert "pandas==0.25" in install
+        assert "nbconvert" in install
+
+    def test_missing_uv_is_unsupported(self, tmp_path, monkeypatch):
+        (tmp_path / "requirements.txt").write_text("pandas==1.3.0\n")
+
+        def boom(cmd, **kwargs):
+            raise FileNotFoundError("uv not found")
+
+        monkeypatch.setattr(re_.subprocess, "run", boom)
+        info = re_.ensure_env(tmp_path, manifest_with(requirements_txt="requirements.txt"))
+        assert info["env"] == "unsupported"
+        assert "FileNotFoundError" in info["reason"]
+
 
 class TestLegacy:
     def test_builds_legacy_venv_once(self, tmp_path, monkeypatch):
@@ -94,10 +116,10 @@ class TestLegacy:
     def test_legacy_worth_retry(self):
         assert re_.legacy_worth_retry(
             "AttributeError: module 'pandas' has no attribute 'xyz'",
-            env_used="main", has_pins=False) is True
+            env_used="main", pins=False) is True
         assert re_.legacy_worth_retry(
-            "AttributeError: ...", env_used="venv-legacy", has_pins=False) is False
+            "AttributeError: ...", env_used="venv-legacy", pins=False) is False
         assert re_.legacy_worth_retry(
-            "AttributeError: ...", env_used="main", has_pins=True) is False
+            "AttributeError: ...", env_used="main", pins=True) is False
         assert re_.legacy_worth_retry(
-            "error: file not found", env_used="main", has_pins=False) is False
+            "error: file not found", env_used="main", pins=False) is False

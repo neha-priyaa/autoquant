@@ -84,3 +84,18 @@ class TestYFinance:
                                                       end="2020-01-31")
         assert len(df) == 2
         assert "close" in df.columns
+
+
+class TestPandasDatareader:
+    def test_fred_datareader(self, shims):
+        df = shims["pandas_datareader"].DataReader("DGS10", "fred")
+        assert list(df.columns) == ["close"]
+        assert len(df) == 2
+
+    def test_default_source_is_yahoo(self, shims):
+        df = shims["pandas_datareader"].DataReader("AAPL")
+        assert len(df) == 2
+
+    def test_unknown_source_raises(self, shims):
+        with pytest.raises(shims["_aqdata"].DataNotAvailable):
+            shims["pandas_datareader"].DataReader("X", "av-daily")

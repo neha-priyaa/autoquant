@@ -10,7 +10,7 @@ as fact.
 ## Input
 
 You receive a JSON payload with: `repo`, `sha`, `artifact` (path within the
-repo), `kind` (`notebook` | `script` | `spec_text`), `deps` (the repo's
+repo), `kind` (`notebook` | `script` | `spec_text`), `deps_text` (the repo's
 declared-dependency files, verbatim, truncated), and `text` (the artifact's
 content, possibly truncated).
 

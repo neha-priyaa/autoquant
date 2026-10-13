@@ -103,6 +103,15 @@ class TestScoreOne:
                            "RUBRIC", model=None, extra=[])
         assert row["error"].startswith("unparseable reply")
 
+    def test_non_dict_reply(self, tmp_path, monkeypatch):
+        manifest = self._setup_repo(tmp_path)
+        monkeypatch.setattr(tr.llm, "complete",
+                            lambda *a, **k: "```json\n[1, 2]\n```")
+        row = tr.score_one(manifest, tmp_path, {"path": "s.py", "kind": "script"},
+                           "RUBRIC", model=None, extra=[])
+        assert row == {"repo": "o/r", "artifact": "s.py",
+                       "error": "unparseable reply: not a JSON object"}
+
 
 class TestMainWith:
     def test_scores_pending_and_resumes(self, tmp_path, monkeypatch):

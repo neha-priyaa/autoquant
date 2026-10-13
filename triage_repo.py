@@ -112,6 +112,8 @@ def score_one(manifest: dict, repo_dir: Path, artifact: dict, rubric: str,
         result = parse_json(reply)
     except (ValueError, json.JSONDecodeError) as exc:
         return {**key, "error": f"unparseable reply: {exc}"[:300]}
+    if not isinstance(result, dict):
+        return {**key, "error": "unparseable reply: not a JSON object"}
     result.update(key)
     result["sha"] = manifest.get("sha")
     return result

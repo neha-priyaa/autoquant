@@ -48,6 +48,19 @@ Cboe slugs are prefixed `cboe-` so downstream artifacts never collide.
 fetch cache at harvest time and rows enter as `fetched`. Slugs are prefixed
 `arxiv-`; dedupe is on the canonical arXiv id.
 
+### External lane (GitHub strategy repos — issues #22–#27)
+
+```bash
+python3 harvest_repo.py LastAncientOne/Stock_Analysis_For_Quant   # clone + manifest
+python3 triage_repo.py --repo LastAncientOne/Stock_Analysis_For_Quant
+python3 run_external.py --repo LastAncientOne/Stock_Analysis_For_Quant
+python3 run_external.py --promote <repo>/<artifact>   # -> specs/ext-...yaml
+```
+
+Repo code never touches the project env (per-repo uv venvs) and never
+touches the network (external_shim/ serves yfinance/pandas_datareader from
+the local price cache).
+
 ### Swapping the LLM provider
 
 The three LLM stages (triage, extract, codegen) go through `llm.py`. The

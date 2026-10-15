@@ -161,3 +161,153 @@ def execute(art: dict, repo_dir: Path, run_copy: Path, env: dict,
     row["env"] = env.get("env")
     row["data_mode"] = data_mode
     return row
+
+
+def _run_notebook(art: dict, nb_path: Path, env: dict, timeout: int,
+                  data_mode: str, results: Path) -> dict:
+    """Execute via nbconvert in the artifact's env; save the executed
+    notebook (inline outputs = browsable evidence) under results/."""
+    cmd = [_python_for(env), "-m", "nbconvert", "--to", "notebook",
+           "--execute", "--inplace",
+           f"--ExecutePreprocessor.timeout={min(timeout, 120)}",
+           str(nb_path)]
+    rc, _out, err = _launch(cmd, cwd=nb_path.parent, env=_child_env(data_mode),
+                            timeout=timeout)
+    row: dict = {"cells_executed": None, "outputs": []}
+    if rc is None:
+        row["verdict"], row["error"] = "timeout", err
+        return row
+    if rc != 0:
+        row["verdict"] = "error"
+        row["error"] = (err or "").strip().splitlines()[-1][:200] if err.strip() else f"exit {rc}"
+        return row
+    try:
+        nb = json.loads(nb_path.read_text())
+        row["cells_executed"] = sum(1 for c in nb.get("cells", [])
+                                    if c.get("execution_count"))
+    except (json.JSONDecodeError, OSError):
+        pass
+    stem = Path(art["artifact"]).stem
+    out_dir = results / art["repo"].replace("/", "-")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out = out_dir / f"{stem}.ipynb"
+    shutil.copy2(nb_path, out)
+    row["verdict"], row["error"] = "ok", None
+    row["outputs"] = [str(out)]
+    return row
+
+
+def _lead_row(art: dict, row: dict, legacy_retry: bool) -> dict:
+    return {
+        "repo": art["repo"], "sha": art.get("sha"), "artifact": art["artifact"],
+        "kind": art.get("kind"), "verdict": row["verdict"],
+        "cells_executed": row.get("cells_executed"),
+        "runtime_s": row.get("runtime_s"), "env": row.get("env"),
+        "data_mode": row.get("data_mode"), "outputs": row.get("outputs", []),
+        "error": row.get("error"), "legacy_retry": legacy_retry,
+        "prefetch_misses": row.get("prefetch_misses", []),
+        "run_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }
+
+
+def run_one(art: dict, repo_dir: Path, timeout: int) -> dict:
+    """One artifact end-to-end: env, prefetch, run-copy, execute, legacy
+    retry. Returns the leaderboard row."""
+    manifest = json.loads((repo_dir / "manifest.json").read_text())
+    env = repo_env.ensure_env(repo_dir, manifest)
+    if env.get("env") == "unsupported":
+        return _lead_row(art, {"verdict": "skip", "error": env.get("reason"),
+                               "env": "none", "data_mode": None,
+                               "cells_executed": None, "outputs": [],
+                               "runtime_s": 0.0}, legacy_retry=False)
+
+    data_mode = "bundled" if art.get("verdict") == "RUN_BUNDLED_DATA" else "ours"
+    misses = prefetch_symbols(art.get("symbols", [])) if data_mode == "ours" else []
+
+    stem = Path(art["artifact"]).stem
+    run_copy = make_run_copy(repo_dir, RESULTS / repo_dir.name / "runs" / stem)
+    row = execute(art, repo_dir, run_copy, env, timeout, data_mode, RESULTS)
+
+    legacy_retry = False
+    if (row["verdict"] in ("error", "timeout") and env.get("env") == "main"):
+        deps_text = "\n".join(
+            (repo_dir / rel).read_text(errors="ignore")
+            for rel in manifest.get("deps", {}).values() if rel)
+        if repo_env.legacy_worth_retry(row.get("error") or "", env.get("env"),
+                                       repo_env.has_pins(deps_text)):
+            leg = repo_env.legacy_env(repo_dir)
+            if leg.get("env") == "venv-legacy":
+                retry = execute(art, repo_dir, run_copy, leg, timeout,
+                                data_mode, RESULTS)
+                if retry["verdict"] == "ok":
+                    row, legacy_retry = retry, True
+    row["prefetch_misses"] = misses
+    return _lead_row(art, row, legacy_retry)
+
+
+def main_with(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--repo", default=None, help="run only OWNER/REPO")
+    ap.add_argument("--jobs", type=int, default=2, help="concurrent artifacts")
+    ap.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT,
+                    help="per-artifact subprocess cap in seconds")
+    ap.add_argument("--heavy", action="store_true",
+                    help="also execute NEEDS_HEAVY_ENV artifacts")
+    ap.add_argument("--promote", metavar="REPO/ARTIFACT", default=None,
+                    help="port one artifact into specs/ (manual trigger)")
+    ap.add_argument("--model", default=None)
+    ap.add_argument("--llm-arg", action="append", default=[], metavar="ARG")
+    args = ap.parse_args(argv)
+
+    if args.promote:
+        return promote_cli(args.promote, args.model, args.llm_arg)
+
+    verdicts = load(TRIAGE)
+    if args.repo:
+        verdicts = [v for v in verdicts if v.get("repo") == args.repo]
+    todo = pending(verdicts, done_keys(LEADERBOARD), args.heavy)
+    if not todo:
+        print("nothing to run -- triage first (triage_repo.py), or "
+              "everything with a verdict already has a leaderboard row")
+        return 0
+
+    print(f"running {len(todo)} artifacts "
+          f"({args.jobs} at a time, {args.timeout}s cap each)\n")
+    ok = failed = 0
+    with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as pool:
+        futures = {pool.submit(run_one, art, REPOS / art["repo"].replace("/", "-"),
+                               args.timeout): art for art in todo}
+        for i, fut in enumerate(concurrent.futures.as_completed(futures), 1):
+            art = futures[fut]
+            try:
+                row = fut.result()
+            except Exception as exc:  # harness bug or torn state — keep the batch alive
+                row = {"repo": art["repo"], "sha": art.get("sha"),
+                       "artifact": art["artifact"], "kind": art.get("kind"),
+                       "verdict": "error", "error": f"harness: {exc}"[:200],
+                       "cells_executed": None, "runtime_s": None, "env": None,
+                       "data_mode": None, "outputs": [], "legacy_retry": False,
+                       "run_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+            record(row, LEADERBOARD)
+            if row["verdict"] == "ok":
+                ok += 1
+            else:
+                failed += 1
+            print(f"[{i}/{len(todo)}] {row['verdict']:<8} "
+                  f"{row['repo']}/{row['artifact']}"
+                  + (f"  ({row.get('error', '')[:50]})" if row.get("error") else ""))
+
+    try:
+        lb = LEADERBOARD.relative_to(ROOT)
+    except ValueError:  # overridden (tests): tmp path outside the repo
+        lb = LEADERBOARD
+    print(f"\n{ok} ok, {failed} not-ok -> {lb}")
+    return 0
+
+
+def main() -> int:
+    return main_with()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

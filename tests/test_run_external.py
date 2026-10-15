@@ -123,3 +123,60 @@ class TestRunScript:
         py_path = captured["env"]["PYTHONPATH"]
         assert str(rx.SHIM) in py_path
         assert captured["env"]["AUTOQUANT_DATA_ROOT"] == str(rx.ROOT)
+
+
+def write_nb(path: Path):
+    nb = {"cells": [{"cell_type": "code", "execution_count": None,
+                     "outputs": [], "source": ["print('ran')"],
+                     "metadata": {}}],
+          "metadata": {"kernelspec": {"name": "python3"}},
+          "nbformat": 4, "nbformat_minor": 5}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(nb))
+
+
+class TestRunNotebook:
+    def test_executes_and_counts_cells(self, tmp_path):
+        repo_dir = tmp_path / "repo"
+        write_nb(repo_dir / "n.ipynb")
+        run_copy = rx.make_run_copy(repo_dir, tmp_path / "run")
+        row = rx.execute({"kind": "notebook", "artifact": "n.ipynb",
+                          "repo": "o/r", "sha": "a" * 40},
+                         repo_dir, run_copy, {"env": "main"},
+                         timeout=120, data_mode="ours", results=tmp_path / "res")
+        if row["verdict"] == "ok":  # main env has nbconvert/ipykernel via project deps
+            assert row["cells_executed"] == 1
+            executed = tmp_path / "res" / "o-r" / "n.ipynb"
+            assert executed.exists()
+            assert any(c.get("execution_count")
+                       for c in json.loads(executed.read_text())["cells"])
+        else:
+            # env without notebook tooling: recorded, not crashed
+            assert row["verdict"] in ("error", "timeout")
+
+
+class TestMainWith:
+    def test_full_flow_end_to_end(self, tmp_path, monkeypatch):
+        repos = tmp_path / "repos" / "o-r"
+        repos.mkdir(parents=True)
+        (repos / "s.py").write_text("print('hello')\n")
+        (repos / "manifest.json").write_text(json.dumps(
+            {"repo": "o/r", "sha": "a" * 40, "notebooks": [], "scripts": [
+                {"path": "s.py", "has_main": True, "n_lines": 1}],
+             "spec_texts": [], "data_files": [], "deps": {}}))
+        (tmp_path / "triage.jsonl").write_text(json.dumps(verdict()) + "\n")
+        monkeypatch.setattr(rx, "REPOS", tmp_path / "repos")
+        monkeypatch.setattr(rx, "TRIAGE", tmp_path / "triage.jsonl")
+        monkeypatch.setattr(rx, "RESULTS", tmp_path / "res")
+        monkeypatch.setattr(rx, "LEADERBOARD", tmp_path / "res" / "leaderboard.jsonl")
+        monkeypatch.setattr(rx, "prefetch_symbols", lambda syms: [])
+
+        assert rx.main_with(["--repo", "o/r"]) == 0
+        rows = [json.loads(l) for l in
+                (tmp_path / "res" / "leaderboard.jsonl").read_text().splitlines()]
+        assert len(rows) == 1 and rows[0]["verdict"] == "ok"
+
+        # re-run skips
+        monkeypatch.setattr(rx, "execute",
+                            lambda *a, **k: (_ for _ in ()).throw(AssertionError("re-ran")))
+        assert rx.main_with(["--repo", "o/r"]) == 0

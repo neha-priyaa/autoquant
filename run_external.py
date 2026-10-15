@@ -81,3 +81,83 @@ def record(row: dict, leaderboard: Path) -> None:
     leaderboard.parent.mkdir(parents=True, exist_ok=True)
     with leaderboard.open("a") as fh:
         fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
+def prefetch_symbols(symbols: list[str]) -> list[str]:
+    """Warm the catalog cache for the artifact's symbols so the shim (which
+    never touches the network) can serve them. Returns symbols that missed."""
+    misses = []
+    for sym in sorted({s.upper() for s in symbols}):
+        try:
+            catalog.load(f"yahoo:{sym}", None, None)
+        except Exception:
+            misses.append(sym)
+    return misses
+
+
+def make_run_copy(repo_dir: Path, dest: Path) -> Path:
+    """Fresh copy of the repo minus .git — the original clone never mutates."""
+    shutil.copytree(repo_dir, dest,
+                    ignore=shutil.ignore_patterns(".git", ".venv",
+                                                  ".venv-legacy", ".env.json"))
+    return dest
+
+
+def _python_for(env: dict) -> str:
+    if env.get("env") == "main":
+        return sys.executable
+    return env["python"]
+
+
+def _kill_group(pid: int) -> None:
+    try:
+        os.killpg(os.getpgid(pid), signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        pass
+
+
+def _child_env(data_mode: str) -> dict:
+    env = os.environ.copy()
+    if data_mode == "ours":
+        # Shim first on the path: `import yfinance` resolves to the stub.
+        env["PYTHONPATH"] = os.pathsep.join(
+            [str(SHIM), env.get("PYTHONPATH", "")]).rstrip(os.pathsep)
+        env["AUTOQUANT_DATA_ROOT"] = str(ROOT)
+    return env
+
+
+def _launch(cmd: list[str], cwd: Path, env: dict, timeout: int):
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            text=True, cwd=cwd, env=env, start_new_session=True)
+    try:
+        stdout, stderr = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        _kill_group(proc.pid)
+        proc.communicate()
+        return None, "", f"timed out after {timeout}s"
+    return proc.returncode, stdout, stderr
+
+
+def execute(art: dict, repo_dir: Path, run_copy: Path, env: dict,
+            timeout: int, data_mode: str, results: Path) -> dict:
+    """Execute one artifact in the run-copy; return a leaderboard row."""
+    target = run_copy / art["artifact"]
+    started = time.monotonic()
+    if art.get("kind") == "notebook":
+        row = _run_notebook(art, target, env, timeout, data_mode, results)
+    else:
+        rc, _out, err = _launch([_python_for(env), str(target)],
+                                cwd=run_copy, env=_child_env(data_mode),
+                                timeout=timeout)
+        row = {"cells_executed": None, "outputs": []}
+        if rc is None:
+            row["verdict"], row["error"] = "timeout", err
+        elif rc != 0:
+            row["verdict"] = "error"
+            row["error"] = (err or "").strip().splitlines()[-1][:200] if err.strip() else f"exit {rc}"
+        else:
+            row["verdict"], row["error"] = "ok", None
+    row["runtime_s"] = round(time.monotonic() - started, 2)
+    row["env"] = env.get("env")
+    row["data_mode"] = data_mode
+    return row

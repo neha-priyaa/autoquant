@@ -180,3 +180,103 @@ class TestMainWith:
         monkeypatch.setattr(rx, "execute",
                             lambda *a, **k: (_ for _ in ()).throw(AssertionError("re-ran")))
         assert rx.main_with(["--repo", "o/r"]) == 0
+
+
+SPEC_YAML = """\
+meta:
+  slug: ext-o-r-demo
+  title: "Demo strategy"
+  url: null
+  source: "github o/r"
+  posted: null
+  claim: "Demo claim."
+data:
+  universe: [SPY]
+  bar: 1d
+  fields: [open, high, low, close, volume]
+  start: 2000-01-01
+  end: null
+  source: yfinance
+  caveats: []
+signal:
+  definition: "raw = close > close.rolling(200).mean()"
+  lookback_bars: 200
+  lag_bars: 1
+rules:
+  entry: "raw is True"
+  exit: "raw is False"
+  direction: long_only
+  position_when_flat: cash
+  sizing: full_notional
+  vol_target: null
+  max_leverage: 1.0
+  rebalance: on_signal_change
+  execution_price: next_open
+costs:
+  commission_bps: 1.0
+  slippage_bps: 5.0
+  borrow_bps_annual: 0.0
+  financing_bps_annual: 0.0
+ambiguities: []
+validation:
+  oos_start: 2026-10-13
+  is_oos_split: publication_date
+  param_sweep: {}
+  cost_sweep_bps: [0, 5, 10, 20, 50]
+  null_tests: []
+  min_trades: 30
+  multiple_testing: {n_tested_so_far: null, method: deflated_sharpe}
+verdict:
+  status: PENDING
+  reason: null
+  report: null
+"""
+
+
+class TestPromote:
+    def _setup(self, tmp_path, monkeypatch):
+        specs = tmp_path / "specs"
+        specs.mkdir()
+        monkeypatch.setattr(rx, "SPECS", specs)
+        triage_rows = [verdict("SPEC_ARTIFACT", artifact="idea.md")]
+        triage_path = tmp_path / "triage.jsonl"
+        triage_path.write_text("".join(json.dumps(r) + "\n" for r in triage_rows))
+        monkeypatch.setattr(rx, "TRIAGE", triage_path)
+        repo_dir = tmp_path / "repos" / "o-r"
+        repo_dir.mkdir(parents=True)
+        (repo_dir / "idea.md").write_text("# Buy above 200dma\nEntry: close > sma200. Exit below.")
+        monkeypatch.setattr(rx, "REPOS", tmp_path / "repos")
+        return repo_dir, specs
+
+    def test_promote_writes_valid_spec(self, tmp_path, monkeypatch):
+        import yaml
+        repo_dir, specs = self._setup(tmp_path, monkeypatch)
+        monkeypatch.setattr(rx.llm, "complete", lambda *a, **k: SPEC_YAML)
+        out = rx.promote("o/r", "idea.md", model=None, extra=[])
+        assert out.name == "ext-o-r-demo.yaml"
+        spec = yaml.safe_load(out.read_text())
+        assert rx.validate_spec(spec) == []
+        assert spec["meta"]["slug"] == "ext-o-r-demo"
+
+    def test_promote_rejects_wrong_slug_prefix(self, tmp_path, monkeypatch):
+        repo_dir, specs = self._setup(tmp_path, monkeypatch)
+        bad = SPEC_YAML.replace("  slug: ext-o-r-demo\n", "  slug: wrong-slug\n")
+        monkeypatch.setattr(rx.llm, "complete", lambda *a, **k: bad)
+        try:
+            rx.promote("o/r", "idea.md", model=None, extra=[])
+            raised = False
+        except SystemExit:
+            raised = True
+        assert raised
+
+    def test_validate_spec_required_keys(self):
+        import yaml
+        spec = yaml.safe_load(SPEC_YAML)
+        assert rx.validate_spec(spec) == []
+        no_costs = dict(spec)
+        del no_costs["costs"]
+        assert any("costs" in e for e in rx.validate_spec(no_costs))
+        no_slug = {"meta": {}, "data": spec["data"], "signal": spec["signal"],
+                   "rules": spec["rules"], "costs": spec["costs"],
+                   "validation": spec["validation"]}
+        assert any("slug" in e for e in rx.validate_spec(no_slug))

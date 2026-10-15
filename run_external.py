@@ -49,6 +49,7 @@ RESULTS = ROOT / "results" / "external"
 LEADERBOARD = RESULTS / "leaderboard.jsonl"
 SHIM = ROOT / "external_shim"
 TEMPLATE = ROOT / "_TEMPLATE.yaml"
+SPECS = ROOT / "specs"
 
 EXECUTABLE = {"RUN_WITH_OUR_DATA", "RUN_BUNDLED_DATA"}
 DEFAULT_TIMEOUT = 600
@@ -307,6 +308,92 @@ def main_with(argv: list[str] | None = None) -> int:
 
 def main() -> int:
     return main_with()
+
+
+PROMPT_HEADER = """You port ONE external strategy artifact into our backtest
+spec format. Accept the artifact's logic as fact — do not redesign it. Fill
+the template below; every field is required (null where unknown, and log it
+under ambiguities). If entry/exit cannot be a deterministic function of past
+data, exit with status UNTESTABLE in verdict and stop.
+meta.slug MUST be exactly the slug given in the payload.
+Return ONLY YAML — no prose, no fences.
+
+--- TEMPLATE ---
+"""
+
+REQUIRED_KEYS = ("meta", "data", "signal", "rules", "costs", "validation")
+
+MAX_PROMPT_CHARS = 40_000
+
+
+def repo_slug_safe(repo: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", repo.lower()).strip("-")
+
+
+def validate_spec(spec: dict) -> list[str]:
+    """Contract checks a promoted spec must pass before it lands in specs/
+    (backtest.py re-validates deeply at run time)."""
+    errors = []
+    for key in REQUIRED_KEYS:
+        if key not in spec:
+            errors.append(f"missing required section: {key}")
+    if "costs" in spec and not spec["costs"]:
+        errors.append("costs section is required and non-empty")
+    if errors:
+        return errors
+    return [] if spec["meta"].get("slug") else ["meta.slug is required"]
+
+
+def promote(repo: str, artifact: str, model: str | None = None,
+            extra: list[str] | None = None) -> Path:
+    """LLM-port one artifact into specs/ext-<repo>-<slug>.yaml. Spec-shaped
+    artifacts are ingested directly; executed artifacts are ported from
+    their content the same way (human reviews the diff before backtest)."""
+    repo_dir = REPOS / repo.replace("/", "-")
+    target = repo_dir / artifact
+    if not target.exists():
+        sys.exit(f"error: {artifact} not found in {repo_dir}")
+    template = TEMPLATE.read_text()
+    prompt = (
+        f"{PROMPT_HEADER}\n{template}\n\n--- ARTIFACT ---\n"
+        f"repo: {repo}\nslug_prefix: ext-{repo_slug_safe(repo)}-\n\n"
+        f"{target.read_text(errors='ignore')[:MAX_PROMPT_CHARS]}\n"
+    )
+    reply = llm.complete(prompt, model=model, extra=extra, timeout=600)
+    text = reply.strip()
+    fence = re.search(r"```(?:yaml)?\s*(.+?)```", text, re.S)
+    if fence:
+        text = fence.group(1)
+    import yaml
+    try:
+        spec = yaml.safe_load(text)
+    except yaml.YAMLError as exc:
+        sys.exit(f"error: unparseable spec reply: {exc}")
+    stem = Path(artifact).stem
+    expected_prefix = f"ext-{repo_slug_safe(repo)}-"
+    if not str(spec.get("meta", {}).get("slug", "")).startswith(expected_prefix):
+        sys.exit(f"error: meta.slug must start with {expected_prefix!r}")
+    errors = validate_spec(spec)
+    if errors:
+        sys.exit(f"error: promoted spec failed validation: {'; '.join(errors)}")
+    SPECS.mkdir(parents=True, exist_ok=True)
+    out = SPECS / f"{spec['meta']['slug']}.yaml"
+    tmp = out.with_suffix(".yaml.tmp")
+    tmp.write_text(text + "\n")
+    tmp.replace(out)
+    return out
+
+
+def promote_cli(ref: str, model: str | None, extra: list[str]) -> int:
+    repo, _, artifact = ref.partition("/")
+    if not artifact:
+        sys.exit("error: --promote expects REPO/ARTIFACT")
+    try:
+        out = promote(repo, artifact, model=model, extra=extra)
+    except llm.LLMError as exc:
+        sys.exit(f"error: {exc}")
+    print(f"promoted -> {out.relative_to(ROOT)}")
+    return 0
 
 
 if __name__ == "__main__":

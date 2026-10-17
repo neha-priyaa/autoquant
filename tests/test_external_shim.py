@@ -73,7 +73,8 @@ class TestYFinance:
     def test_download_single(self, shims):
         df = shims["yfinance"].download("AAPL", start="2020-01-01")
         assert list(df.columns) == ["open", "high", "low", "close", "volume",
-                                    "Adj Close"]
+                                    "Adj Close", "Open", "High", "Low",
+                                    "Close", "Volume"]
         assert len(df) == 2
 
     def test_download_multi_returns_multiindex(self, shims, data_root):
@@ -148,3 +149,19 @@ class TestPilotFidelity:
         df = fyf.download("AAPL", start="2020-01-01", end="2020-01-31")
         assert "close" in df.columns
         assert callable(fyf.pdr_override)
+
+
+class TestCapitalizedAliases:
+    """More pilot evidence: some notebooks read data['Open'] etc. — real
+    yfinance's capitalized names — while others read lowercase."""
+
+    def test_download_serves_both_cases(self, shims, data_root):
+        df = shims["yfinance"].download("AAPL")
+        for c in ("open", "Open", "close", "Close", "volume", "Volume",
+                  "Adj Close"):
+            assert c in df.columns, c
+        assert df["Open"].tolist() == df["open"].tolist()
+
+    def test_ticker_history_serves_both_cases(self, shims, data_root):
+        df = shims["yfinance"].Ticker("AAPL").history()
+        assert "Open" in df.columns and "Close" in df.columns

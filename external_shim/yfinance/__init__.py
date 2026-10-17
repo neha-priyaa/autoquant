@@ -51,6 +51,11 @@ def _frame(symbol: str, start=None, end=None) -> pd.DataFrame:
     if "close" in out:
         # 2018-era code (auto_adjust=False default) reads data["Adj Close"]
         out["Adj Close"] = out["close"]
+    # Pilot notebooks read both conventions: serve real-yfinance's
+    # capitalized names as aliases of the lowercase frame.
+    for c in FIELDS:
+        if c in out:
+            out[c.capitalize()] = out[c]
     return out
 
 

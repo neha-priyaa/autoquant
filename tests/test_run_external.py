@@ -293,3 +293,16 @@ class TestKindOf:
 
     def test_non_ipynb_defaults_script(self):
         assert rx.kind_of({"artifact": "idea.md", "kind": None}) == "script"
+
+
+class TestRunCopyReuse:
+    def test_existing_dest_replaced(self, tmp_path):
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / "s.py").write_text("print('hi')\n")
+        dest = tmp_path / "runs" / "one"
+        dest.mkdir(parents=True)
+        (dest / "stale.txt").write_text("old attempt")
+        rx.make_run_copy(repo, dest)          # must not raise
+        assert (dest / "s.py").exists()
+        assert not (dest / "stale.txt").exists()

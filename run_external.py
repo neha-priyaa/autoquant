@@ -97,7 +97,9 @@ def prefetch_symbols(symbols: list[str]) -> list[str]:
 
 
 def make_run_copy(repo_dir: Path, dest: Path) -> Path:
-    """Fresh copy of the repo minus .git — the original clone never mutates."""
+    """Fresh copy of the repo minus .git — the original clone never mutates.
+    A stale dest from a previous attempt is replaced (resumable re-runs)."""
+    shutil.rmtree(dest, ignore_errors=True)
     shutil.copytree(repo_dir, dest,
                     ignore=shutil.ignore_patterns(".git", ".venv",
                                                   ".venv-legacy", ".env.json"))

@@ -16,8 +16,12 @@ dependencies = [
 [dependency-groups]
 dev = [
     "ipykernel>=7.4.0",
+    "matplotlib>=3.11.2",
     "nbconvert>=7.17.2",
+    "nltk>=3.10.3",
     "pytest>=8.0",
+    "scipy>=1.17.1",
+    "statsmodels>=0.15.0",
 ]
 
 [tool.pytest.ini_options]

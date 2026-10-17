@@ -1,5 +1,6 @@
 """Tests for run_external.py — subprocess/llm calls are monkeypatched."""
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -306,3 +307,33 @@ class TestRunCopyReuse:
         rx.make_run_copy(repo, dest)          # must not raise
         assert (dest / "s.py").exists()
         assert not (dest / "stale.txt").exists()
+
+
+class TestNotebookKernel:
+    def test_forces_python3_kernel(self, tmp_path, monkeypatch):
+        captured = {}
+
+        def fake_launch(cmd, cwd, env, timeout):
+            captured["cmd"] = cmd
+            return 1, "", "boom"
+        monkeypatch.setattr(rx, "_launch", fake_launch)
+        run_copy = tmp_path / "run"
+        run_copy.mkdir()
+        (run_copy / "n.ipynb").write_text("{}")
+        rx.execute({"kind": "notebook", "artifact": "n.ipynb",
+                    "repo": "o/r", "sha": "a" * 40},
+                   tmp_path, run_copy, {"env": "main"},
+                   timeout=30, data_mode="ours", results=tmp_path / "res")
+        assert "--ExecutePreprocessor.kernel_name=python3" in captured["cmd"]
+
+
+class TestChildEnvRepoRoot:
+    def test_repo_root_on_path_for_ours(self, tmp_path):
+        env = rx._child_env("ours", repo_root=tmp_path / "repo")
+        parts = env["PYTHONPATH"].split(os.pathsep)
+        assert str(rx.SHIM) == parts[0]
+        assert str(tmp_path / "repo") in parts
+
+    def test_repo_root_on_path_for_bundled(self, tmp_path):
+        env = rx._child_env("bundled", repo_root=tmp_path / "repo")
+        assert str(tmp_path / "repo") in env["PYTHONPATH"]

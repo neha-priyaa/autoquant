@@ -119,13 +119,17 @@ def _kill_group(pid: int) -> None:
         pass
 
 
-def _child_env(data_mode: str) -> dict:
+def _child_env(data_mode: str, repo_root: Path | None = None) -> dict:
     env = os.environ.copy()
+    parts = [env.get("PYTHONPATH", "")]
+    if repo_root is not None:
+        # repo-local modules (e.g. a sibling `backtester/`) must import
+        parts.insert(0, str(repo_root))
     if data_mode == "ours":
         # Shim first on the path: `import yfinance` resolves to the stub.
-        env["PYTHONPATH"] = os.pathsep.join(
-            [str(SHIM), env.get("PYTHONPATH", "")]).rstrip(os.pathsep)
+        parts.insert(0, str(SHIM))
         env["AUTOQUANT_DATA_ROOT"] = str(ROOT)
+    env["PYTHONPATH"] = os.pathsep.join(parts).rstrip(os.pathsep)
     return env
 
 
@@ -155,10 +159,12 @@ def execute(art: dict, repo_dir: Path, run_copy: Path, env: dict,
     target = run_copy / art["artifact"]
     started = time.monotonic()
     if kind_of(art) == "notebook":
-        row = _run_notebook(art, target, env, timeout, data_mode, results)
+        row = _run_notebook(art, target, run_copy, env, timeout, data_mode,
+                            results)
     else:
         rc, _out, err = _launch([_python_for(env), str(target)],
-                                cwd=run_copy, env=_child_env(data_mode),
+                                cwd=run_copy,
+                                env=_child_env(data_mode, repo_root=run_copy),
                                 timeout=timeout)
         row = {"cells_executed": None, "outputs": []}
         if rc is None:
@@ -174,15 +180,17 @@ def execute(art: dict, repo_dir: Path, run_copy: Path, env: dict,
     return row
 
 
-def _run_notebook(art: dict, nb_path: Path, env: dict, timeout: int,
-                  data_mode: str, results: Path) -> dict:
+def _run_notebook(art: dict, nb_path: Path, repo_root: Path, env: dict,
+                  timeout: int, data_mode: str, results: Path) -> dict:
     """Execute via nbconvert in the artifact's env; save the executed
     notebook (inline outputs = browsable evidence) under results/."""
     cmd = [_python_for(env), "-m", "nbconvert", "--to", "notebook",
            "--execute", "--inplace",
            f"--ExecutePreprocessor.timeout={min(timeout, 120)}",
+           "--ExecutePreprocessor.kernel_name=python3",
            str(nb_path)]
-    rc, _out, err = _launch(cmd, cwd=nb_path.parent, env=_child_env(data_mode),
+    rc, _out, err = _launch(cmd, cwd=nb_path.parent,
+                            env=_child_env(data_mode, repo_root=repo_root),
                             timeout=timeout)
     row: dict = {"cells_executed": None, "outputs": []}
     if rc is None:

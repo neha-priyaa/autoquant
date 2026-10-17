@@ -15,12 +15,14 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "arch>=8.0.0",
     "ipykernel>=7.4.0",
     "matplotlib>=3.11.2",
     "nbconvert>=7.17.2",
     "nltk>=3.10.3",
     "pytest>=8.0",
     "scipy>=1.17.1",
+    "seaborn>=0.13.2",
     "statsmodels>=0.15.0",
 ]
 

@@ -35,7 +35,8 @@ def shims(data_root):
     """Import the shim packages fresh, with external_shim/ front of sys.path."""
     saved_path = sys.path[:]
     saved_mods = {k: sys.modules.pop(k) for k in
-                  ("yfinance", "pandas_datareader", "_aqdata") if k in sys.modules}
+                  ("yfinance", "pandas_datareader", "_aqdata", "fix_yahoo_finance")
+                  if k in sys.modules}
     sys.path.insert(0, SHIM)
     import yfinance
     import pandas_datareader
@@ -43,7 +44,8 @@ def shims(data_root):
     yield {"yfinance": yfinance, "pandas_datareader": pandas_datareader,
            "_aqdata": _aqdata}
     sys.path[:] = saved_path
-    for k in ("yfinance", "pandas_datareader", "_aqdata"):
+    for k in ("yfinance", "pandas_datareader", "_aqdata",
+              "fix_yahoo_finance"):
         sys.modules.pop(k, None)
     sys.modules.update(saved_mods)
 
@@ -70,7 +72,8 @@ class TestDataNotAvailable:
 class TestYFinance:
     def test_download_single(self, shims):
         df = shims["yfinance"].download("AAPL", start="2020-01-01")
-        assert list(df.columns) == ["open", "high", "low", "close", "volume"]
+        assert list(df.columns) == ["open", "high", "low", "close", "volume",
+                                    "Adj Close"]
         assert len(df) == 2
 
     def test_download_multi_returns_multiindex(self, shims, data_root):
@@ -121,3 +124,27 @@ class TestPandasDatareader:
     def test_unknown_source_raises(self, shims):
         with pytest.raises(shims["_aqdata"].DataNotAvailable):
             shims["pandas_datareader"].DataReader("X", "av-daily")
+
+
+class TestPilotFidelity:
+    """Gaps the live pilot exposed: 2018-era notebooks expect Adj Close,
+    yfinance.pdr_override(), and the fix_yahoo_finance package."""
+
+    def test_download_includes_adj_close(self, shims, data_root):
+        df = shims["yfinance"].download("AAPL")
+        assert "Adj Close" in df.columns
+        assert df["Adj Close"].tolist() == df["close"].tolist()
+
+    def test_ticker_history_includes_adj_close(self, shims, data_root):
+        df = shims["yfinance"].Ticker("AAPL").history()
+        assert "Adj Close" in df.columns
+
+    def test_pdr_override_is_callable_noop(self, shims):
+        assert callable(shims["yfinance"].pdr_override)
+        shims["yfinance"].pdr_override()  # must not raise
+
+    def test_fix_yahoo_finance_package(self, shims, data_root):
+        import fix_yahoo_finance as fyf
+        df = fyf.download("AAPL", start="2020-01-01", end="2020-01-31")
+        assert "close" in df.columns
+        assert callable(fyf.pdr_override)

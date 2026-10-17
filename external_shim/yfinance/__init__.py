@@ -47,7 +47,16 @@ def _frame(symbol: str, start=None, end=None) -> pd.DataFrame:
     cols = [c for c in FIELDS if c in df.columns]
     if not cols:
         raise DataNotAvailable(f"{symbol}: no ohlcv columns in cached data")
-    return df[cols]
+    out = df[cols].copy()
+    if "close" in out:
+        # 2018-era code (auto_adjust=False default) reads data["Adj Close"]
+        out["Adj Close"] = out["close"]
+    return out
+
+
+def pdr_override(*args, **kwargs) -> None:
+    """Old yfinance's pandas_datareader patch — a no-op here: the
+    pandas_datareader shim already serves the same cache."""
 
 
 def download(tickers, start=None, end=None, *, auto_adjust=True,

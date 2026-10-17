@@ -139,12 +139,20 @@ def _launch(cmd: list[str], cwd: Path, env: dict, timeout: int):
     return proc.returncode, stdout, stderr
 
 
+def kind_of(art: dict) -> str:
+    """Notebook vs script — derived from the path (deterministic), not the
+    LLM's triage reply, which may omit or contradict `kind`."""
+    if str(art.get("artifact", "")).endswith(".ipynb"):
+        return "notebook"
+    return "script"
+
+
 def execute(art: dict, repo_dir: Path, run_copy: Path, env: dict,
             timeout: int, data_mode: str, results: Path) -> dict:
     """Execute one artifact in the run-copy; return a leaderboard row."""
     target = run_copy / art["artifact"]
     started = time.monotonic()
-    if art.get("kind") == "notebook":
+    if kind_of(art) == "notebook":
         row = _run_notebook(art, target, env, timeout, data_mode, results)
     else:
         rc, _out, err = _launch([_python_for(env), str(target)],
@@ -201,7 +209,7 @@ def _run_notebook(art: dict, nb_path: Path, env: dict, timeout: int,
 def _lead_row(art: dict, row: dict, legacy_retry: bool) -> dict:
     return {
         "repo": art["repo"], "sha": art.get("sha"), "artifact": art["artifact"],
-        "kind": art.get("kind"), "verdict": row["verdict"],
+        "kind": kind_of(art), "verdict": row["verdict"],
         "cells_executed": row.get("cells_executed"),
         "runtime_s": row.get("runtime_s"), "env": row.get("env"),
         "data_mode": row.get("data_mode"), "outputs": row.get("outputs", []),

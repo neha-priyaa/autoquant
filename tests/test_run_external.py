@@ -280,3 +280,16 @@ class TestPromote:
                    "rules": spec["rules"], "costs": spec["costs"],
                    "validation": spec["validation"]}
         assert any("slug" in e for e in rx.validate_spec(no_slug))
+
+
+class TestKindOf:
+    def test_path_wins_over_missing_kind(self):
+        assert rx.kind_of({"artifact": "n.ipynb", "kind": None}) == "notebook"
+
+    def test_llm_kind_does_not_override_path(self):
+        # the triage reply is LLM-produced; the extension is deterministic
+        assert rx.kind_of({"artifact": "s.py", "kind": "notebook"}) == "script"
+        assert rx.kind_of({"artifact": "n.ipynb", "kind": "script"}) == "notebook"
+
+    def test_non_ipynb_defaults_script(self):
+        assert rx.kind_of({"artifact": "idea.md", "kind": None}) == "script"

@@ -374,7 +374,7 @@ def write_report(spec_path: Path, out: dict) -> Path:
         "",
         f"- source: {spec['meta']['source']} — <{spec['meta']['url']}>",
         f"- published: {spec['meta']['posted']}  (OOS boundary)",
-        f"- claim: {spec['meta']['claim'].strip()}",
+        f"- claim: {(spec['meta'].get('claim') or 'none stated').strip()}",
         f"- spec: `{spec_path.resolve().relative_to(ROOT)}`",
         "",
         "## Verdict",

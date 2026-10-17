@@ -402,10 +402,17 @@ def promote(repo: str, artifact: str, model: str | None = None,
     return out
 
 
+def parse_ref(ref: str) -> tuple[str, str]:
+    """OWNER/REPO/ARTIFACT -> (OWNER/REPO, ARTIFACT). The repo is two
+    segments; the artifact may contain further slashes."""
+    parts = ref.split("/")
+    if len(parts) < 3:
+        sys.exit("error: --promote expects OWNER/REPO/ARTIFACT")
+    return "/".join(parts[:2]), "/".join(parts[2:])
+
+
 def promote_cli(ref: str, model: str | None, extra: list[str]) -> int:
-    repo, _, artifact = ref.partition("/")
-    if not artifact:
-        sys.exit("error: --promote expects REPO/ARTIFACT")
+    repo, artifact = parse_ref(ref)
     try:
         out = promote(repo, artifact, model=model, extra=extra)
     except llm.LLMError as exc:

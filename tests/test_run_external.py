@@ -337,3 +337,16 @@ class TestChildEnvRepoRoot:
     def test_repo_root_on_path_for_bundled(self, tmp_path):
         env = rx._child_env("bundled", repo_root=tmp_path / "repo")
         assert str(tmp_path / "repo") in env["PYTHONPATH"]
+
+
+class TestParseRef:
+    def test_owner_repo_artifact(self):
+        assert rx.parse_ref("o/r/idea.md") == ("o/r", "idea.md")
+
+    def test_nested_artifact(self):
+        assert rx.parse_ref("o/r/sub/dir/n.ipynb") == ("o/r", "sub/dir/n.ipynb")
+
+    def test_missing_artifact_exits(self):
+        import pytest
+        with pytest.raises(SystemExit):
+            rx.parse_ref("o/r")

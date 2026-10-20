@@ -1,0 +1,302 @@
+{
+ "generatedAt": "2026-10-20T14:40:11+00:00",
+ "counts": {
+  "articles": 151,
+  "triaged": 45,
+  "specs": 16,
+  "backtests": 7,
+  "external": 43
+ },
+ "stages": [
+  {
+   "index": "01",
+   "name": "Discover research",
+   "description": "Pull candidate strategy write-ups from Quantocracy, Cboe Insights and arXiv q-fin feeds.",
+   "artifact": "data/articles.jsonl",
+   "doc": "https://github.com/uberdeveloper/autoquant#readme"
+  },
+  {
+   "index": "02",
+   "name": "Fetch source material",
+   "description": "Extract and cache the full article text behind every discovered link.",
+   "artifact": "data/pages/",
+   "doc": "https://github.com/uberdeveloper/autoquant#readme"
+  },
+  {
+   "index": "03",
+   "name": "Evaluate testability",
+   "description": "Score every claim: is it a testable hypothesis, and do we have the data?",
+   "artifact": "data/triage.jsonl",
+   "doc": "https://github.com/uberdeveloper/autoquant#readme"
+  },
+  {
+   "index": "04",
+   "name": "Extract a specification",
+   "description": "Turn a triaged claim into an explicit YAML spec — universe, signal, rules, costs, validation.",
+   "artifact": "specs/",
+   "doc": "https://github.com/uberdeveloper/autoquant#readme"
+  },
+  {
+   "index": "05",
+   "name": "Generate strategy code",
+   "description": "Generate Python for the spec and smoke-test it before anything runs.",
+   "artifact": "strategies/",
+   "doc": "https://github.com/uberdeveloper/autoquant#readme"
+  },
+  {
+   "index": "06",
+   "name": "Execute an isolated backtest",
+   "description": "Run every spec in a timeout-capped subprocess against the local price cache.",
+   "artifact": "results/leaderboard.jsonl",
+   "doc": "https://github.com/uberdeveloper/autoquant#readme"
+  },
+  {
+   "index": "07",
+   "name": "Compare and inspect",
+   "description": "Rank the evidence on one explainable metric and read the full reports.",
+   "artifact": "reports/",
+   "doc": "https://github.com/uberdeveloper/autoquant#readme"
+  }
+ ],
+ "chains": [
+  {
+   "slug": "dual-momentum-between-gold-and-bitcoin-two-stores-of-value",
+   "title": "Dual Momentum Between Gold and Bitcoin (Two Stores of Value)",
+   "stages": [
+    {
+     "kind": "article",
+     "title": "Dual Momentum Between Gold and Bitcoin (Two Stores of Value)",
+     "body": "An 8-week dual-momentum switch between GLD and IBIT returns 79.91% a year at a Sharpe of 1.64. Vojtko and Dujava report that number on a Quantpedia note covering 31 December 2018 through April 2026, weekly rebalance at Wednesday's close, cash when both lookbacks print negative. Hold the other(...)",
+     "repoPath": "data/articles.jsonl#dual-momentum-between-gold-and-bitcoin-two-stores-of-value"
+    },
+    {
+     "kind": "spec",
+     "title": "specs/dual-momentum-between-gold-and-bitcoin-two-stores-of-value.yaml",
+     "body": "meta:\n  slug: dual-momentum-between-gold-and-bitcoin-two-stores-of-value\n  title: Dual Momentum Between Gold and Bitcoin (Two Stores of Value)\n  url: https://aligrithm.com/dual-momentum-between-gold-and-bitcoin-two-stores-of-value/\n  source: Aligrithm\n  posted: 2026-08-15\n  claim: 'A weekly dual-momentum switch between GLD and IBIT (long the 8-week lookback\n    winner only if its 8-week return is positive, else cash) beats buy-and-hold of\n    either leg and a 50/50 blend on risk-adjusted return.\n\n    '\n  author_evidence:\n    sample: 31 Dec 2018 - April 2026, weekly Wednesday, GLD and a Bitcoin splice (Bitfinex\n      BTC -> BITO -> IBIT), rf = 0%\n    headline_metrics:\n      cagr: 0.7991\n      sharpe: 1.64\n      max_dd: -0.4394\n    costs_included: false\ndata:\n  universe:\n  - GLD\n  - BITO\n  - IBIT\n  bar: 1d\n  fields:\n  - open\n  - high\n  - low\n  - close\n  - volume\n  start: 2021-10-19\n  end: null\n  source: yfinance\n  caveats:\n  - IBIT listed 2024-01-11; the author's 2018+ sample splices Bitfinex hourly BTC\n    then BITO before IBIT, so everything before Jan 2024 is a proxy, not the live\n    vehicle.\n  - BITO is a futures-based fund with roll drag the author's Bitfinex BTC series …",
+     "repoPath": "specs/dual-momentum-between-gold-and-bitcoin-two-stores-of-value.yaml"
+    },
+    {
+     "kind": "code",
+     "title": "strategies/dual-momentum-between-gold-and-bitcoin-two-stores-of-value.py",
+     "body": "\"\"\"Dual Momentum Between Gold and Bitcoin (Two Stores of Value).\n\nWeekly (Wednesday-close) dual-momentum switch: compute the 40-bar\n(8-week) close-to-close return of GLD and of the Bitcoin leg (BITO\nbefore IBIT's first quote, IBIT thereafter); hold 100% of the 40-bar\nwinner only if its 40-bar return is positive, otherwise sit in cash.\nNever hold both names.\n\"\"\"\nfrom __future__ import annotations\n\nimport pandas as pd\n\n\ndef signal(data: dict[str, pd.DataFrame], lookback_bars: int = 40,\n           weekday: int = 2, **_) -> pd.DataFrame:\n    universe = list(data)\n    idx = next(iter(data.values())).index\n\n    closes = pd.concat(\n        [data[t][\"close\"].reindex(idx).astype(float) for t in universe],\n        axis=1)\n    closes.columns = universe\n\n    gld = closes[\"GLD\"]\n\n    # Tradable Bitcoin leg: BITO until IBIT starts printing, IBIT after.\n    ibit = closes[\"IBIT\"]\n    bito = closes[\"BITO\"]\n    btc = ibit.where(ibit.notna(), bito)\n\n    r_gld = gld.pct_change(lookback_bars)\n    r_btc = btc.pct_change(lookback_bars)\n\n    # Weekly clock: act on the last bar of each Wed-anchored week.\n    wk = pd.Series(idx.to_period(\"W-WED\"), index=idx)\n    rebal = (wk != …",
+     "repoPath": "strategies/dual-momentum-between-gold-and-bitcoin-two-stores-of-value.py"
+    },
+    {
+     "kind": "report",
+     "title": "reports/dual-momentum-between-gold-and-bitcoin-two-stores-of-value.md",
+     "body": "# Dual Momentum Between Gold and Bitcoin (Two Stores of Value)\n\n- source: Aligrithm — <https://aligrithm.com/dual-momentum-between-gold-and-bitcoin-two-stores-of-value/>\n- published: 2026-08-15  (OOS boundary)\n- claim: A weekly dual-momentum switch between GLD and IBIT (long the 8-week lookback winner only if its 8-week return is positive, else cash) beats buy-and-hold of either leg and a 50/50 blend on risk-adjusted return.\n- spec: `specs/dual-momentum-between-gold-and-bitcoin-two-stores-of-value.yaml`\n\n## Verdict\n\n**PENDING** — fill in after review\n\n## Headline (net of costs)\n\n| | strategy | buy & hold |\n|---|---|---|\n| CAGR | 29.21% | 13.14% |\n| Sharpe | 1.063 | 0.574 |\n| max DD | -31.11% | -39.16% |\n| t-stat | 2.34 | 1.27 |\n| exposure | 77% | 100% |\n| trades | 17 | 1 |\n\nGross Sharpe 1.088 vs net 1.063; annual cost drag 0.70%. Deflated Sharpe 1.063.\n\n## In-sample vs since-publication\n\n| window | period | CAGR | Sharpe | max DD |\n|---|---|---|---|---|\n| author's era | 2021-10-19→2026-08-14 | 27.72% | 1.019 | -31.11% |\n| since publication | 2026-08-17→2026-09-09 | 193.96% | 5.12 | -3.28% |\n\n## Cost sensitivity (Sharpe by per-side slippage)\n\n| 0bps | 5bps | 10bps | 20bps | 50bps …",
+     "repoPath": "reports/dual-momentum-between-gold-and-bitcoin-two-stores-of-value.md"
+    }
+   ]
+  },
+  {
+   "slug": "european-country-rotation-vs-sector-rotation",
+   "title": "European country rotation vs sector rotation",
+   "stages": [
+    {
+     "kind": "article",
+     "title": "European country rotation vs sector rotation",
+     "body": "Every European rotation system in circulation treats the country as the unit of risk. The people who run these books rank Germany against Spain against Sweden and call the result a country bet. A European country index is a concentrated sector bet: banks carry the south, pharma and staples carry(...)",
+     "repoPath": "data/articles.jsonl#european-country-rotation-vs-sector-rotation"
+    },
+    {
+     "kind": "spec",
+     "title": "specs/european-country-rotation-vs-sector-rotation.yaml",
+     "body": "meta:\n  slug: european-country-rotation-vs-sector-rotation\n  title: European country rotation vs sector rotation\n  url: https://quanterlab.com/research/what-a-european-country-fund-is-made-of-and-whether-the-country-part-is-worth\n  source: Quanter Lab\n  posted: 2026-09-08\n  claim: 'Rotating the ten USD-listed iShares global sector ETFs monthly on trailing\n    12-month momentum (holding the top three equally) beats holding the ten European\n    single-country ETFs equally on compounded return, and its edge comes from sector\n    exposure rather than any country-level signal.\n\n    '\n  author_evidence:\n    sample: 2008-01-02 to 2025-12-31, eighteen registered one-year walk-forward windows,\n      USD-listed iShares MSCI country and global sector ETFs\n    headline_metrics:\n      cagr: 0.079\n      sharpe: 0.5\n      max_dd: -0.534\n      growth_of_one_dollar: 3.90x\n      mean_window_sharpe: 0.9\n    costs_included: true\ndata:\n  universe:\n  - IXN\n  - IXJ\n  - IXG\n  - IXC\n  - IXP\n  - MXI\n  - EXI\n  - KXI\n  - RXI\n  - JXI\n  bar: 1d\n  fields:\n  - open\n  - high\n  - low\n  - close\n  - volume\n  start: 2006-09-01\n  end: null\n  source: yfinance\n  caveats:\n  - \"Fixed list of ten sector ETFs that all …",
+     "repoPath": "specs/european-country-rotation-vs-sector-rotation.yaml"
+    },
+    {
+     "kind": "code",
+     "title": "strategies/european-country-rotation-vs-sector-rotation.py",
+     "body": "\"\"\"European country rotation vs sector rotation: monthly top-3 rotation on\ntrailing 12-month momentum across ten USD-listed iShares global sector ETFs,\nequal weight 1/3 each, long only, cash when flat. Ranks are refreshed at each\nmonth-end on data available then; the harness lags weights, so no shift here.\"\"\"\nfrom __future__ import annotations\n\nimport numpy as np\nimport pandas as pd\n\n\ndef signal(data: dict[str, pd.DataFrame], lookback_bars: int = 252,\n           n_holdings: int = 3, **_) -> pd.DataFrame:\n    universe = list(data)\n    idx = next(iter(data.values())).index\n    closes = pd.concat(\n        [data[t][\"close\"].reindex(idx).astype(float) for t in universe],\n        axis=1, keys=universe)\n    closes.columns = universe\n\n    mom = closes / closes.shift(lookback_bars) - 1.0\n\n    # Rank only on month-end sessions; hold the basket until the next month-end.\n    m = pd.Series(idx.to_period(\"M\"), index=idx)\n    is_month_end = m != m.shift(-1)\n    mom_step = mom.where(is_month_end)\n\n    # Stable descending rank: ties broken by ticker order in the universe.\n    rank = mom_step.rank(ascending=False, method=\"first\", axis=1)\n    w_step = (rank <= n_holdings).astype(float)\n    w_step …",
+     "repoPath": "strategies/european-country-rotation-vs-sector-rotation.py"
+    },
+    {
+     "kind": "report",
+     "title": "reports/european-country-rotation-vs-sector-rotation.md",
+     "body": "# European country rotation vs sector rotation\n\n- source: Quanter Lab — <https://quanterlab.com/research/what-a-european-country-fund-is-made-of-and-whether-the-country-part-is-worth>\n- published: 2026-09-08  (OOS boundary)\n- claim: Rotating the ten USD-listed iShares global sector ETFs monthly on trailing 12-month momentum (holding the top three equally) beats holding the ten European single-country ETFs equally on compounded return, and its edge comes from sector exposure rather than any country-level signal.\n- spec: `specs/european-country-rotation-vs-sector-rotation.yaml`\n\n## Verdict\n\n**PENDING** — fill in after review\n\n## Headline (net of costs)\n\n| | strategy | buy & hold |\n|---|---|---|\n| CAGR | 7.58% | 8.91% |\n| Sharpe | 0.495 | 0.558 |\n| max DD | -48.89% | -52.45% |\n| t-stat | 2.21 | 2.49 |\n| exposure | 95% | 100% |\n| trades | 1 | 1 |\n\nGross Sharpe 0.496 vs net 0.495; annual cost drag 0.02%. Deflated Sharpe 0.495.\n\n## In-sample vs since-publication\n\n| window | period | CAGR | Sharpe | max DD |\n|---|---|---|---|---|\n| author's era | 2006-09-01→2026-09-04 | 7.60% | 0.497 | -48.89% |\n| since publication | 2026-09-08→2026-09-09 | -37.35% | -11.225 | 0.00% |\n\n## Cost …",
+     "repoPath": "reports/european-country-rotation-vs-sector-rotation.md"
+    }
+   ]
+  },
+  {
+   "slug": "i-built-paper-spec-crypto-strategy-on-5-8-years-of-data-it-s",
+   "title": "I built paper-spec crypto strategy on 5.8 years of data. It's lost money every year since 2024",
+   "stages": [
+    {
+     "kind": "article",
+     "title": "I built paper-spec crypto strategy on 5.8 years of data. It's lost money every year since 2024",
+     "body": "The literature on crypto quant trading keeps citing cross-sectional momentum as a durable edge with Sharpe around 1.1 to 1.5. I built exactly the paper spec, ran it against 303 weekly rebalances across 10 majors, no parameter tuning, no regime filters, no cheating. Annualized Sharpe came out at(...)",
+     "repoPath": "data/articles.jsonl#i-built-paper-spec-crypto-strategy-on-5-8-years-of-data-it-s"
+    },
+    {
+     "kind": "spec",
+     "title": "specs/i-built-paper-spec-crypto-strategy-on-5-8-years-of-data-it-s.yaml",
+     "body": "meta:\n  slug: i-built-paper-spec-crypto-strategy-on-5-8-years-of-data-it-s\n  title: I built paper-spec crypto strategy on 5.8 years of data. It's lost money\n    every year since 2024\n  url: https://stratproof.com/blog/crypto-cross-sectional-momentum-does-not-work-anymore\n  source: Strat Proof\n  posted: 2026-09-03\n  claim: \"A cross-sectional momentum strategy on 10 crypto majors \\u2014 long the\\\n    \\ top 3 and short the bottom 3 by prior 7-day close-to-close return, 1/6 of book\\\n    \\ each, rebalanced every 7 days \\u2014 earns positive risk-adjusted returns net\\\n    \\ of costs.\\n\"\n  author_evidence:\n    sample: 2020-10-31 to 2026-09-02, daily closes from Binance spot, 10 majors, 303\n      weekly rebalances\n    headline_metrics:\n      weekly_mean_return: 0.0023\n      weekly_return_std: 0.045\n      annualized_sharpe: 0.37\n      max_dd: -0.417\n      terminal_equity: 1.47\n      sharpe_gt_zero_probability: 0.81\n    costs_included: true\ndata:\n  universe:\n  - BTC\n  - ETH\n  - SOL\n  - XRP\n  - DOGE\n  - BNB\n  - ADA\n  - AVAX\n  - LINK\n  - LTC\n  bar: 1d\n  fields:\n  - open\n  - high\n  - low\n  - close\n  - volume\n  start: 2020-10-31\n  end: 2026-09-02\n  source: binance_spot\n  caveats:\n  - …",
+     "repoPath": "specs/i-built-paper-spec-crypto-strategy-on-5-8-years-of-data-it-s.yaml"
+    },
+    {
+     "kind": "code",
+     "title": "strategies/i-built-paper-spec-crypto-strategy-on-5-8-years-of-data-it-s.py",
+     "body": "\"\"\"Cross-sectional 7-day momentum on ten crypto majors: long the top 3 and\nshort the bottom 3 by trailing close-to-close weekly return, 1/6 of book per\nposition, rebalanced every 7 daily bars from the start of the sample. Ranks\nare refreshed only on rebalance sessions on data available then; the harness\nlags weights to next_open, so no shift here. Flat sleeves sit in cash.\"\"\"\nfrom __future__ import annotations\n\nimport numpy as np\nimport pandas as pd\n\n\ndef signal(data: dict[str, pd.DataFrame], lookback_bars: int = 7,\n           top_n: int = 3, bottom_n: int = 3, leg_weight: float = 1.0 / 6.0,\n           rebalance_every: int = 7, **_) -> pd.DataFrame:\n    universe = list(data)\n    idx = next(iter(data.values())).index\n    closes = pd.concat(\n        [data[t][\"close\"].reindex(idx).astype(float) for t in universe],\n        axis=1, keys=universe)\n    closes.columns = universe\n\n    mom = closes.pct_change(lookback_bars)\n\n    # Trade only every `rebalance_every`-th bar from the sample start.\n    n = len(idx)\n    is_rebal = np.zeros(n, dtype=bool)\n    is_rebal[::rebalance_every] = True\n    mom_step = mom.where(pd.Series(is_rebal, index=idx))\n\n    # Descending cross-sectional rank; ties …",
+     "repoPath": "strategies/i-built-paper-spec-crypto-strategy-on-5-8-years-of-data-it-s.py"
+    },
+    {
+     "kind": "report",
+     "title": "reports/i-built-paper-spec-crypto-strategy-on-5-8-years-of-data-it-s.md",
+     "body": "# I built paper-spec crypto strategy on 5.8 years of data. It's lost money every year since 2024\n\n- source: Strat Proof — <https://stratproof.com/blog/crypto-cross-sectional-momentum-does-not-work-anymore>\n- published: 2026-09-03  (OOS boundary)\n- claim: A cross-sectional momentum strategy on 10 crypto majors — long the top 3 and short the bottom 3 by prior 7-day close-to-close return, 1/6 of book each, rebalanced every 7 days — earns positive risk-adjusted returns net of costs.\n- spec: `specs/i-built-paper-spec-crypto-strategy-on-5-8-years-of-data-it-s.yaml`\n\n## Verdict\n\n**PENDING** — fill in after review\n\n## Headline (net of costs)\n\n| | strategy | buy & hold |\n|---|---|---|\n| CAGR | 5.14% | 5.46% |\n| Sharpe | 0.383 | 0.475 |\n| max DD | -25.42% | -23.89% |\n| t-stat | 0.92 | 1.14 |\n| exposure | 39% | 100% |\n| trades | 2 | 1 |\n\nGross Sharpe 0.416 vs net 0.383; annual cost drag 0.55%. Deflated Sharpe 0.383.\n\n## In-sample vs since-publication\n\n| window | period | CAGR | Sharpe | max DD |\n|---|---|---|---|---|\n| author's era | 2020-11-02→2026-09-02 | 5.14% | 0.383 | -25.42% |\n\n## Cost sensitivity (Sharpe by per-side slippage)\n\n| 0bps | 5bps | 10bps | 15bps | 30bps …",
+     "repoPath": "reports/i-built-paper-spec-crypto-strategy-on-5-8-years-of-data-it-s.md"
+    }
+   ]
+  }
+ ],
+ "archive": [
+  {
+   "slug": "ext-lastancientone-stock-analysis-for-quant-coherence",
+   "source": "GitHub — LastAncientOne/Stock_Analysis_For_Quant (Jupyter notebook)",
+   "lane": "article",
+   "status": "PENDING",
+   "netSharpe": -0.04,
+   "beatsNull": false,
+   "date": "2026-10-17"
+  },
+  {
+   "slug": "Content Capturing Text Feature",
+   "source": "Auquan/Tutorials",
+   "lane": "external",
+   "status": "error",
+   "netSharpe": null,
+   "beatsNull": null,
+   "date": "2026-10-17"
+  },
+  {
+   "slug": "ARIMA + GARCH to model SPX returns",
+   "source": "Auquan/Tutorials",
+   "lane": "external",
+   "status": "error",
+   "netSharpe": null,
+   "beatsNull": null,
+   "date": "2026-10-17"
+  },
+  {
+   "slug": "Expected Value and Standard Deviation",
+   "source": "Auquan/Tutorials",
+   "lane": "external",
+   "status": "error",
+   "netSharpe": null,
+   "beatsNull": null,
+   "date": "2026-10-17"
+  },
+  {
+   "slug": "Integration, Cointegration, and Stationarity",
+   "source": "Auquan/Tutorials",
+   "lane": "external",
+   "status": "error",
+   "netSharpe": null,
+   "beatsNull": null,
+   "date": "2026-10-17"
+  },
+  {
+   "slug": "Momentum Strategies",
+   "source": "Auquan/Tutorials",
+   "lane": "external",
+   "status": "error",
+   "netSharpe": null,
+   "beatsNull": null,
+   "date": "2026-10-17"
+  },
+  {
+   "slug": "Long-Short Strategies using Ranking",
+   "source": "Auquan/Tutorials",
+   "lane": "external",
+   "status": "error",
+   "netSharpe": null,
+   "beatsNull": null,
+   "date": "2026-10-17"
+  },
+  {
+   "slug": "Overfitting",
+   "source": "Auquan/Tutorials",
+   "lane": "external",
+   "status": "error",
+   "netSharpe": null,
+   "beatsNull": null,
+   "date": "2026-10-17"
+  },
+  {
+   "slug": "Random Variables",
+   "source": "Auquan/Tutorials",
+   "lane": "external",
+   "status": "error",
+   "netSharpe": null,
+   "beatsNull": null,
+   "date": "2026-10-17"
+  },
+  {
+   "slug": "Time Series Analysis - 1",
+   "source": "Auquan/Tutorials",
+   "lane": "external",
+   "status": "error",
+   "netSharpe": null,
+   "beatsNull": null,
+   "date": "2026-10-17"
+  },
+  {
+   "slug": "Time Series Analysis - 2",
+   "source": "Auquan/Tutorials",
+   "lane": "external",
+   "status": "error",
+   "netSharpe": null,
+   "beatsNull": null,
+   "date": "2026-10-17"
+  },
+  {
+   "slug": "Time Series Analysis - 3",
+   "source": "Auquan/Tutorials",
+   "lane": "external",
+   "status": "error",
+   "netSharpe": null,
+   "beatsNull": null,
+   "date": "2026-10-17"
+  }
+ ],
+ "headline": {
+  "slug": "ext-lastancientone-stock-analysis-for-quant-coherence",
+  "metrics": [
+   {
+    "label": "CAGR",
+    "strategy": "-7.44%",
+    "benchmark": "10.82%"
+   },
+   {
+    "label": "Sharpe",
+    "strategy": "-0.04",
+    "benchmark": "0.461"
+   },
+   {
+    "label": "max DD",
+    "strategy": "-51.18%",
+    "benchmark": "-66.00%"
+   },
+   {
+    "label": "t-stat",
+    "strategy": "-0.07",
+    "benchmark": "0.8"
+   },
+   {
+    "label": "exposure",
+    "strategy": "47%",
+    "benchmark": "100%"
+   },
+   {
+    "label": "trades",
+    "strategy": "62",
+    "benchmark": "1"
+   }
+  ]
+ },
+ "catalog": {
+  "series": 0,
+  "providers": []
+ }
+}

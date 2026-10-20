@@ -136,3 +136,17 @@ Strategies that run with `execution_price: next_open` require an `open`
 column; close-only FRED series are rejected with a clear message, and the
 codegen smoke test uses source-shaped frames so such strategies fail there
 instead.
+
+## Web frontend (landing)
+
+The landing page renders a build-time snapshot of the real pipeline
+artifacts — no runtime backend, no fabricated content.
+
+    uv run python scripts/web_snapshot.py   # regenerate snapshot from artifacts
+    cd web && npm install                   # once
+    cd web && npm run dev                   # http://localhost:5173
+    cd web && npm run build && npm run preview   # production build
+
+Re-run the snapshot script whenever pipeline artifacts change; the landing
+shows empty states on a fresh install by design. Frontend tests:
+`cd web && npm test`.

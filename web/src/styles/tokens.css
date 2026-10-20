@@ -1,0 +1,53 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #0b0c0d;
+  --color-surface: #131516;
+  --color-ink: #f3f1ea;
+  --color-dim: #969a97;
+  --color-accent: #c5f467;
+  --color-fail: #e5785c;
+  --color-line: rgba(243, 241, 234, 0.13);
+  --font-display: "Space Grotesk", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+html {
+  background: var(--color-bg);
+  color: var(--color-ink);
+  scroll-behavior: smooth;
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .reveal, .reveal * { transition: none !important; animation: none !important; opacity: 1 !important; transform: none !important; }
+}
+
+body {
+  font-family: var(--font-display);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* thin grid-line motif for large sections */
+.gridlines {
+  background-image: linear-gradient(var(--color-line) 1px, transparent 1px);
+  background-size: 100% 96px;
+  opacity: 0.35;
+}
+
+/* scroll reveal */
+.reveal { opacity: 0; transform: translateY(24px); transition: opacity 0.7s ease, transform 0.7s ease; }
+.reveal.in { opacity: 1; transform: none; }
+
+:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+
+/* hero illustration */
+@keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.prose-fade { animation: fadeUp 1.2s ease both; }
+.yaml-line { opacity: 0; animation: fadeUp 0.5s ease both; }
+@keyframes draw { from { stroke-dashoffset: 600; } to { stroke-dashoffset: 0; } }
+.curve-draw { stroke-dasharray: 600; opacity: 0; animation: draw 1.6s ease forwards, fadeUp 0.3s ease forwards; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+.curve-readout { opacity: 0; animation: fadeIn 0.6s ease both; }
+@media (prefers-reduced-motion: reduce) {
+  .yaml-line, .curve-draw, .curve-readout, .prose-fade { animation: none; opacity: 1; stroke-dashoffset: 0; }
+}

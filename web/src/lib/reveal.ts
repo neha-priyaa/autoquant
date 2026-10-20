@@ -8,12 +8,19 @@ export function useRevealRoot() {
   useEffect(() => {
     const root = ref.current;
     if (!root) return;
+    const targets = root.querySelectorAll(".reveal");
+    // Environments without IntersectionObserver (old browsers, jsdom):
+    // skip the animation entirely instead of leaving content invisible.
+    if (typeof IntersectionObserver === "undefined") {
+      targets.forEach((el) => el.classList.add("in"));
+      return;
+    }
     const io = new IntersectionObserver(
       (entries) =>
         entries.forEach((e) => e.isIntersecting && e.target.classList.add("in")),
       { threshold: 0.15 },
     );
-    root.querySelectorAll(".reveal").forEach((el) => io.observe(el));
+    targets.forEach((el) => io.observe(el));
     return () => io.disconnect();
   }, []);
   return ref;

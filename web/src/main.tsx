@@ -12,6 +12,7 @@ import Archive from "./sections/Archive";
 import FinalCta from "./sections/FinalCta";
 import WorkspaceStub from "./sections/WorkspaceStub";
 import { useRevealRoot } from "./lib/reveal";
+import { normalizeBasename } from "./lib/basename";
 
 function Landing() {
   const ref = useRevealRoot();
@@ -30,7 +31,7 @@ function Landing() {
 export default function App() {
   return (
     <StrictMode>
-      <BrowserRouter>
+      <BrowserRouter basename={normalizeBasename(import.meta.env.BASE_URL)}>
         <Nav />
         <Routes>
           <Route path="/" element={<Landing />} />

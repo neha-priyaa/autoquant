@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowUpRight, Menu, X } from "lucide-react";
+import { ArrowUpRight, Menu, Moon, Sun, X } from "lucide-react";
+import { useTheme } from "../lib/theme";
 
 const LINKS: [string, string][] = [
   ["Product", "#product"],
@@ -12,6 +13,7 @@ const LINKS: [string, string][] = [
 export default function Nav() {
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
+  const { theme, toggle } = useTheme();
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 24);
     window.addEventListener("scroll", onScroll, { passive: true });
@@ -41,6 +43,13 @@ export default function Nav() {
               {label}
             </a>
           ))}
+          <button
+            onClick={toggle}
+            aria-label="Toggle theme"
+            className="text-dim transition-colors hover:text-ink"
+          >
+            {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          </button>
           <Link
             to="/workspace"
             className="border border-line px-4 py-2 font-mono text-xs tracking-widest text-accent transition-colors hover:border-accent"
@@ -48,9 +57,14 @@ export default function Nav() {
             OPEN WORKSPACE <ArrowUpRight className="ml-1 inline h-3 w-3" />
           </Link>
         </div>
-        <button className="md:hidden" aria-label="Menu" onClick={() => setOpen(!open)}>
-          {open ? <X /> : <Menu />}
-        </button>
+        <div className="flex items-center gap-4 md:hidden">
+          <button onClick={toggle} aria-label="Toggle theme" className="text-dim">
+            {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          </button>
+          <button aria-label="Menu" onClick={() => setOpen(!open)}>
+            {open ? <X /> : <Menu />}
+          </button>
+        </div>
       </nav>
       {open && (
         <div className="border-t border-line bg-bg px-6 py-8 md:hidden">

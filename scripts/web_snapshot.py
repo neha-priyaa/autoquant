@@ -116,6 +116,110 @@ def _archive_row_external(row: dict) -> dict | None:
             "beatsNull": None, "date": (row.get("run_at") or "")[:10]}
 
 
+def _spec_summary(path: Path, has_code: bool) -> dict | None:
+    """Structured fields + truncated raw YAML for the Strategy Lab."""
+    try:
+        spec = yaml.safe_load(path.read_text(errors="ignore")) or {}
+    except yaml.YAMLError:
+        return None
+    meta = spec.get("meta") or {}
+    data = spec.get("data") or {}
+    signal = spec.get("signal") or {}
+    rules = spec.get("rules") or {}
+    verdict = spec.get("verdict") or {}
+    return {
+        "slug": meta.get("slug") or path.stem,
+        "title": meta.get("title"),
+        "claim": meta.get("claim"),
+        "universe": data.get("universe") or [],
+        "bar": data.get("bar"),
+        "signal": signal.get("definition"),
+        "entry": rules.get("entry"),
+        "exit": rules.get("exit"),
+        "direction": rules.get("direction"),
+        "status": verdict.get("status"),
+        "hasCode": has_code,
+        "raw": truncate(path.read_text(errors="ignore"), 4000),
+    }
+
+
+def _workspace(root: Path, articles: list[dict], triage: list[dict],
+               lead: list[dict], external: list[dict],
+               spec_paths: list[Path]) -> dict:
+    has_code = {p.stem for p in
+                (root / "strategies").glob("*.py")} if (root / "strategies").exists() else set()
+    specs = [s for s in (_spec_summary(p, p.stem in has_code)
+                         for p in spec_paths) if s]
+
+    runs = [dict(r, slug=r.get("slug"), lane="article",
+                 status=r.get("verdict"), netSharpe=r.get("net_sharpe"),
+                 beatsNull=r.get("beats_null_95"),
+                 date=(r.get("run_at") or "")[:10],
+                 flags=r.get("flags") or [], error=None)
+            for r in lead]
+    runs += [{"slug": Path(r.get("artifact") or "").stem,
+              "lane": "external", "status": r.get("verdict"),
+              "netSharpe": None, "beatsNull": None,
+              "date": (r.get("run_at") or "")[:10],
+              "flags": [], "error": (r.get("error") or "")[:300]}
+             for r in external]
+
+    reports = {}
+    for path in (root / "reports").glob("*.md") if (root / "reports").exists() else []:
+        reports[path.stem] = {"metrics": report_metrics(path),
+                              "text": truncate(path.read_text(errors="ignore"),
+                                               8000)}
+
+    failed = []
+    for row in load_jsonl(root / "results" / "failed.jsonl"):
+        spec = row.get("spec") or ""
+        failed.append({"slug": Path(spec).stem.replace(".yaml", ""),
+                       "error": (row.get("error") or "")[:300]})
+
+    catalog = []
+    catalog_path = root / "catalog.json"
+    if catalog_path.exists():
+        try:
+            for e in json.loads(catalog_path.read_text()).get("series", []):
+                if not e.get("id"):
+                    continue
+                catalog.append({
+                    "id": e["id"], "title": e.get("title"),
+                    "provider": e["id"].split(":")[0],
+                    "tags": e.get("tags") or [],
+                    "frequency": e.get("frequency"),
+                    "coverageStart": e.get("coverage_start"),
+                    "license": e.get("license"),
+                    "notes": e.get("notes"),
+                    "fallback": e.get("fallback"),
+                })
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    triage_by_slug = {t.get("slug"): t for t in triage}
+    article_rows = [{
+        "slug": a.get("slug"), "title": a.get("title"),
+        "source": a.get("source"), "url": a.get("url"),
+        "posted": a.get("posted"), "stage": a.get("stage"),
+        "blurb": truncate(a.get("blurb") or "", 400),
+        "triageScore": a.get("triage_score")
+        if a.get("triage_score") is not None
+        else (triage_by_slug.get(a.get("slug")) or {}).get("score"),
+    } for a in articles]
+
+    triage_rows = [{
+        "slug": t.get("slug"), "title": t.get("title"), "url": t.get("url"),
+        "claim": truncate(t.get("claim") or "", 300),
+        "assetClass": t.get("asset_class"), "score": t.get("score"),
+        "redFlags": t.get("red_flags") or [], "missing": t.get("missing") or [],
+        "reason": truncate(t.get("reason") or "", 300),
+    } for t in triage if t.get("slug")]
+
+    return {"articles": article_rows, "triage": triage_rows, "specs": specs,
+            "runs": runs, "reports": reports, "failed": failed,
+            "catalog": catalog, "catalogCount": len(catalog)}
+
+
 def build_snapshot(root: Path) -> dict:
     articles = load_jsonl(root / "data" / "articles.jsonl")
     triage = load_jsonl(root / "data" / "triage.jsonl")
@@ -170,7 +274,7 @@ def build_snapshot(root: Path) -> dict:
             headline = {"slug": row["slug"], "metrics": metrics}
             break
 
-    catalog_path = root / "data" / "catalog" / "index.json"
+    catalog_path = root / "catalog.json"
     providers: list[str] = []
     series = 0
     if catalog_path.exists():
@@ -194,6 +298,7 @@ def build_snapshot(root: Path) -> dict:
         "archive": archive,
         "headline": headline,
         "catalog": {"series": series, "providers": providers},
+        "workspace": _workspace(root, articles, triage, lead, external, specs),
     }
 
 

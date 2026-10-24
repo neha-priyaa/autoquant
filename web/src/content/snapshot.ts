@@ -32,7 +32,10 @@ export function loadSnapshot(raw: unknown): Snapshot {
     archive: Array.isArray(s.archive) ? s.archive : [],
     headline: s.headline ?? null,
     catalog: s.catalog ?? { series: 0, providers: [] },
-  };
+    // pass the workspace section through untouched — the workspace loader
+    // (content/workspace.ts) owns its contract
+    ...("workspace" in s ? { workspace: s.workspace } : {}),
+  } as Snapshot;
 }
 
 /** Vite static import of the generated JSON. Run scripts/web_snapshot.py first. */

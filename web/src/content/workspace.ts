@@ -23,10 +23,18 @@ const empty: Workspace = {
 export function loadWorkspace(raw: unknown): Workspace {
   if (!raw || typeof raw !== "object") return empty;
   const w = raw as Partial<Workspace>;
+  const specs = (Array.isArray(w.specs) ? w.specs : []).map((s) => ({
+    ...s,
+    universe: Array.isArray(s.universe)
+      ? s.universe
+      : s.universe
+        ? [String(s.universe)]
+        : [],
+  }));
   return {
     articles: Array.isArray(w.articles) ? w.articles : [],
     triage: Array.isArray(w.triage) ? w.triage : [],
-    specs: Array.isArray(w.specs) ? w.specs : [],
+    specs,
     runs: Array.isArray(w.runs) ? w.runs : [],
     reports: w.reports && typeof w.reports === "object" ? w.reports : {},
     failed: Array.isArray(w.failed) ? w.failed : [],

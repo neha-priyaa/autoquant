@@ -127,11 +127,16 @@ def _spec_summary(path: Path, has_code: bool) -> dict | None:
     signal = spec.get("signal") or {}
     rules = spec.get("rules") or {}
     verdict = spec.get("verdict") or {}
+    universe = data.get("universe")
+    if isinstance(universe, str):
+        universe = [universe]
+    if not isinstance(universe, list):
+        universe = []
     return {
         "slug": meta.get("slug") or path.stem,
         "title": meta.get("title"),
         "claim": meta.get("claim"),
-        "universe": data.get("universe") or [],
+        "universe": universe,
         "bar": data.get("bar"),
         "signal": signal.get("definition"),
         "entry": rules.get("entry"),

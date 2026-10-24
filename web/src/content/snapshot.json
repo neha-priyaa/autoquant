@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-10-24T16:34:21+00:00",
+ "generatedAt": "2026-10-24T16:48:35+00:00",
  "counts": {
   "articles": 151,
   "triaged": 45,
@@ -2711,10 +2711,7 @@
     "slug": "magic-formula-tested-against-each-half-quality-alone-beat-th",
     "title": "Magic Formula tested against each half: quality alone beat the combination",
     "claim": "Holding the thirty S&P 500 names ranked highest on return on capital (ROIC) alone, equal-weighted with annual reselection, outperforms the equal blend of ROIC and earnings-yield ranks (the Magic Formula) on return, volatility, Sharpe ratio and drawdown over 2006-2025.\n",
-    "universe": {
-     "rule": "S&P 500 constituents as of each rebalance date (point-in-time membership)",
-     "point_in_time_source": null
-    },
+    "universe": [],
     "bar": "1d",
     "signal": "At each annual anchor date, for each S&P 500 constituent, compute ROIC = NOPAT / invested capital from the most recent fundamentals filing whose SEC acceptedDate is strictly before the anchor. Cross-sectionally rank all constituents by ROIC descending (rank method: ordinal by ROIC value; the article's platform averages standardised scores, see ambiguities). Select the 30 highest-ranked names. raw = membership in the top-30 set.",
     "entry": "name enters the top-30 ROIC-ranked basket at the annual reselection",
@@ -2744,7 +2741,9 @@
     "slug": "price-path-convexity-a-new-cross-sectional-anomaly",
     "title": "Price-Path Convexity: A New Cross-Sectional Anomaly",
     "claim": "A monthly-rebalanced long-short portfolio that is long the lowest-convexity quintile and short the highest-convexity quintile of US common stocks (convexity = (midpoint of first and last close minus mean of the month's daily closes) divided by that midpoint) earns a positive next-month spread of about 0.84% gross before transaction costs.\n",
-    "universe": "All NYSE, AMEX, and NASDAQ common stocks at each month-end (point-in-time membership; no pre-filtering by size or liquidity beyond common-stock classification)",
+    "universe": [
+     "All NYSE, AMEX, and NASDAQ common stocks at each month-end (point-in-time membership; no pre-filtering by size or liquidity beyond common-stock classification)"
+    ],
     "bar": "1d",
     "signal": "At the last trading bar of each month, take the trailing N=21 daily closes. p1 = close[-21], pN = close[-1], mid = (p1 + pN) / 2, mean_p = close[-21:].mean(); convexity = (mid - mean_p) / mid. Rank all names cross-sectionally; lowest quintile = long leg, highest quintile = short leg, weights proportional to market cap within each leg (value-weighted).\n",
     "entry": "At each month-end signal, hold long the lowest-convexity quintile and short the highest-convexity quintile, dollar-neutral legs, value-weighted within each quintile",
@@ -2890,7 +2889,9 @@
     "slug": "what-happens-after-congress-buys-or-sells-a-stock-evidence",
     "title": "What Happens After Congress Buys or Sells a Stock? Evidence From 17,859 Disclosures",
     "claim": "Buying stocks at the first market close after a congressional purchase disclosure becomes public and holding them for one year beats the S&P 500 over the same window (and purchases differ from sales).\n",
-    "universe": "US-listed common stocks with a STOCK Act Periodic Transaction Report purchase or sale disclosure; point-in-time source: congressional PTR filings (filing date = public availability date)",
+    "universe": [
+     "US-listed common stocks with a STOCK Act Periodic Transaction Report purchase or sale disclosure; point-in-time source: congressional PTR filings (filing date = public availability date)"
+    ],
     "bar": "1d",
     "signal": "event set E = PTR disclosures (stock s, public filing date d, direction); raw[s, t] = True for t in [first session strictly after d, +252 sessions); entry only for direction == purchase",
     "entry": "on each PTR purchase event: buy the stock at the first market close strictly after the public filing date (decision on filing-date bar t, execution at bar t+1 close)",

@@ -190,12 +190,15 @@ class TestWorkspace:
         (tmp_path / "reports" / "a.md").write_text(
             "## Headline (net of costs)\n\n| | strategy | buy & hold |\n"
             "|---|---|---|\n| Sharpe | -0.04 | 0.46 |\n\nBody text here.\n")
+        # stale history alone is NOT a live failure (spec b has code now)
         (tmp_path / "results" / "failed.jsonl").write_text(json.dumps({
             "spec": "/x/specs/b.yaml", "error": "exit 1: something broke"}) + "\n")
+        (tmp_path / "strategies").mkdir()
+        (tmp_path / "strategies" / "b.py").write_text("import pandas\n")
         w = load_module().build_snapshot(tmp_path)["workspace"]
         r = w["reports"]["a"]
         assert r["metrics"][0]["label"] == "Sharpe" and "Body text" in r["text"]
-        assert w["failed"][0]["slug"] == "b" and "exit 1" in w["failed"][0]["error"]
+        assert w["failed"] == []  # stale history with code present = not failing
 
     def test_catalog_from_repo_root_json(self, tmp_path):
         (tmp_path / "catalog.json").write_text(json.dumps({"version": 1, "series": [
@@ -207,3 +210,18 @@ class TestWorkspace:
         assert c["provider"] == "yahoo" and c["frequency"] == "daily"
         assert c["fallback"] == "stooq:spy.us"
         assert w["catalogCount"] == 1
+
+
+class TestWorkspaceFailures:
+    def test_failures_from_live_error_markers_not_stale_history(self, tmp_path):
+        (tmp_path / "results").mkdir()
+        (tmp_path / "strategies").mkdir()
+        # stale history: this spec has since been coded successfully
+        (tmp_path / "results" / "failed.jsonl").write_text(json.dumps({
+            "spec": "/x/specs/old.yaml", "error": "exit 1: stale"}) + "\n")
+        # live failure: an .error marker next to no .py
+        (tmp_path / "strategies" / "live.error").write_text(
+            json.dumps({"error": "TypeError: bad kwarg"}))
+        w = load_module().build_snapshot(tmp_path)["workspace"]
+        assert [f["slug"] for f in w["failed"]] == ["live"]
+        assert "bad kwarg" in w["failed"][0]["error"]

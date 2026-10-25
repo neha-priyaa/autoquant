@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-10-24T16:48:35+00:00",
+ "generatedAt": "2026-10-25T16:13:37+00:00",
  "counts": {
   "articles": 151,
   "triaged": 45,
@@ -3718,60 +3718,7 @@
     "text": "# Timing Nifty 50 with the 200-day moving average\n\n- source: Demo — template example instantiated — <https://example.com/200dma>\n- published: 2015-01-01  (OOS boundary)\n- claim: Holding ^NSEI only when it is above its 200-day moving average beats buy-and-hold on risk-adjusted return.\n- spec: `specs/nifty50-200dma-timing.yaml`\n\n## Verdict\n\n**PENDING** — fill in after review\n\n## Headline (net of costs)\n\n| | strategy | buy & hold |\n|---|---|---|\n| CAGR | 6.10% | 9.34% |\n| Sharpe | 0.512 | 0.53 |\n| max DD | -26.89% | -59.39% |\n| t-stat | 2.2 | 2.28 |\n| exposure | 69% | 100% |\n| trades | 144 | 1 |\n\nGross Sharpe 0.548 vs net 0.512; annual cost drag 0.47%. Deflated Sharpe 0.324.\n\n## In-sample vs since-publication\n\n| window | period | CAGR | Sharpe | max DD |\n|---|---|---|---|---|\n| author's era | 2007-09-17→2014-12-31 | 8.90% | 0.638 | -21.25% |\n| since publication | 2015-01-02→2026-09-09 | 4.40% | 0.42 | -26.89% |\n\n## Cost sensitivity (Sharpe by per-side slippage)\n\n| 0bps | 5bps | 10bps | 20bps | 50bps |\n|---|---|---|---|---|\n| 0.548 | 0.518 | 0.489 | 0.43 | 0.252 |\n\n## Parameter neighbourhood (Sharpe)\n\n`lookback_bars`: 100=0.69, 150=0.578, 200=0.512, 250=0.558, 300=0.399\n\n## Random-entry null (matched exposure)\n\n```json\n{\n  \"actual_sharpe\": 0.512,\n  \"null_sharpe_mean\": 0.062,\n  \"null_sharpe_p95\": 0.271,\n  \"percentile\": 100.0,\n  \"beats_null_95\": true\n}\n```\n\n## Automated flags\n\n- WEAK: does not beat buy-and-hold after costs\n- NOTE: material ambiguities unswept: execution_timing, flat_asset\n\n## Author's claim vs this run\n\n- author reported: `{'cagr': 0.098, 'sharpe': 0.72, 'max_dd': -0.28}` over 1950-2024, SPY/S&P 500 total return, costs included: False\n- this run: CAGR 6.10%, Sharpe 0.512, over 2007-09-17→2026-09-09\n\n## Open ambiguities\n\n- **execution_timing** (material): Signal computed on the close — can you trade that same close? → default `next_open`, alternatives ['same_close']\n- **ma_type** (minor): Simple or exponential 200-day average? → default `simple`, alternatives ['exponential']\n- **flat_asset** (material): Cash at 0%, or T-bills, when out of the market? → default `cash_zero`, alternatives ['tbill_3m']"
    }
   },
-  "failed": [
-   {
-    "slug": "dual-momentum-between-gold-and-bitcoin-two-stores-of-value",
-    "error": "exit 1: warning: `VIRTUAL_ENV=/Users/nehapriya/.cache/uv/builds-v0/.tmp1B9oSI` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead\nthis skeleton handles single-asset specs; extend for cross-sectional\n"
-   },
-   {
-    "slug": "2x-your-portfolio-every-year-how-i-turbocharged-the-overnigh",
-    "error": "exit 1: warning: `VIRTUAL_ENV=/Users/nehapriya/.cache/uv/builds-v0/.tmp1B9oSI` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead\nthis skeleton handles single-asset specs; extend for cross-sectional\n"
-   },
-   {
-    "slug": "dalio-holy-grail-walked-2008-2025",
-    "error": "exit 1: warning: `VIRTUAL_ENV=/Users/nehapriya/.cache/uv/builds-v0/.tmp1B9oSI` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead\nthis skeleton handles single-asset specs; extend for cross-sectional\n"
-   },
-   {
-    "slug": "all-weather-built-and-tested-against-inverse-vol-erc-and-a-6",
-    "error": "exit 1: warning: `VIRTUAL_ENV=/Users/nehapriya/.cache/uv/builds-v0/.tmp1B9oSI` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead\nthis skeleton handles single-asset specs; extend for cross-sectional\n"
-   },
-   {
-    "slug": "i-built-paper-spec-crypto-strategy-on-5-8-years-of-data-it-s",
-    "error": "exit 1: warning: `VIRTUAL_ENV=/Users/nehapriya/.cache/uv/builds-v0/.tmp1B9oSI` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead\nthis skeleton handles single-asset specs; extend for cross-sectional\n"
-   },
-   {
-    "slug": "dual-momentum-for-a-collapsing-currency",
-    "error": "exit 1: warning: `VIRTUAL_ENV=/Users/nehapriya/.cache/uv/builds-v0/.tmp1B9oSI` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead\nthis skeleton handles single-asset specs; extend for cross-sectional\n"
-   },
-   {
-    "slug": "european-country-rotation-vs-sector-rotation",
-    "error": "exit 1: warning: `VIRTUAL_ENV=/Users/nehapriya/.cache/uv/builds-v0/.tmp1B9oSI` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead\nthis skeleton handles single-asset specs; extend for cross-sectional\n"
-   },
-   {
-    "slug": "magic-formula-tested-against-each-half-quality-alone-beat-th",
-    "error": "exit 1: riya/.cache/uv/builds-v0/.tmp1B9oSI` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead\nmissing implementation: /Users/nehapriya/Desktop/autoquant/strategies/magic-formula-tested-against-each-half-quality-alone-bea"
-   },
-   {
-    "slug": "price-path-convexity-a-new-cross-sectional-anomaly",
-    "error": "exit 1: warning: `VIRTUAL_ENV=/Users/nehapriya/.cache/uv/builds-v0/.tmp1B9oSI` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead\nthis skeleton handles single-asset specs; extend for cross-sectional\n"
-   },
-   {
-    "slug": "sectoral-intramonth-momentum-cycle-exploiting-turn-of-the-mo",
-    "error": "exit 1: warning: `VIRTUAL_ENV=/Users/nehapriya/.cache/uv/builds-v0/.tmp1B9oSI` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead\nthis skeleton handles single-asset specs; extend for cross-sectional\n"
-   },
-   {
-    "slug": "the-crash-switch-worked-and-the-strategy-starved-anyway-kell",
-    "error": "exit 1: warning: `VIRTUAL_ENV=/Users/nehapriya/.cache/uv/builds-v0/.tmp1B9oSI` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead\nthis skeleton handles single-asset specs; extend for cross-sectional\n"
-   },
-   {
-    "slug": "the-missing-asset-120-years-of-global-stocks-bonds-and-gold",
-    "error": "exit 1: warning: `VIRTUAL_ENV=/Users/nehapriya/.cache/uv/builds-v0/.tmp1B9oSI` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead\nthis skeleton handles single-asset specs; extend for cross-sectional\n"
-   },
-   {
-    "slug": "what-happens-after-congress-buys-or-sells-a-stock-evidence",
-    "error": "exit 1: warning: `VIRTUAL_ENV=/Users/nehapriya/.cache/uv/builds-v0/.tmp1B9oSI` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead\nthis skeleton handles single-asset specs; extend for cross-sectional\n"
-   }
-  ],
+  "failed": [],
   "catalog": [
    {
     "id": "yahoo:SPY",

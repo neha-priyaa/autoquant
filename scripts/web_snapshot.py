@@ -176,10 +176,22 @@ def _workspace(root: Path, articles: list[dict], triage: list[dict],
                                                8000)}
 
     failed = []
-    for row in load_jsonl(root / "results" / "failed.jsonl"):
-        spec = row.get("spec") or ""
-        failed.append({"slug": Path(spec).stem.replace(".yaml", ""),
-                       "error": (row.get("error") or "")[:300]})
+    # Live failures = current .error markers. results/failed.jsonl is
+    # append-only history — entries there often succeed in later runs, so
+    # reporting it directly shows stale failures.
+    history = {Path(r.get("spec") or "x").stem.replace(".yaml", ""):
+               (r.get("error") or "")[:300]
+               for r in load_jsonl(root / "results" / "failed.jsonl")}
+    strategies = root / "strategies"
+    for marker in (strategies.glob("*.error")
+                   if strategies.exists() else []):
+        slug = marker.stem
+        try:
+            message = (json.loads(marker.read_text()).get("error") or "")[:300]
+        except (json.JSONDecodeError, OSError):
+            message = ""
+        failed.append({"slug": slug,
+                       "error": message or history.get(slug, "codegen failed")})
 
     catalog = []
     catalog_path = root / "catalog.json"

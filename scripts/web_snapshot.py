@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""WEB SNAPSHOT — build web/src/content/snapshot.json from real artifacts.
+"""WEB SNAPSHOT — build frontend/src/content/snapshot.json from real artifacts.
 
 Pure readers over the pipeline's output artifacts (jsonl/yaml/md). Never
 executes the pipeline, never fabricates content: a fresh install produces a
 valid all-empty snapshot and the landing renders its empty states.
 
-    uv run python scripts/web_snapshot.py [--out web/src/content/snapshot.json]
+    uv run python scripts/web_snapshot.py [--out frontend/src/content/snapshot.json]
 """
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
-OUT = ROOT / "web" / "src" / "content" / "snapshot.json"
+OUT = ROOT / "frontend" / "src" / "content" / "snapshot.json"
 
 MAX_BLURB = 400
 MAX_ARTIFACT = 1200

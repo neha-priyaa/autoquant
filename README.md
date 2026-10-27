@@ -143,10 +143,10 @@ The landing page renders a build-time snapshot of the real pipeline
 artifacts — no runtime backend, no fabricated content.
 
     uv run python scripts/web_snapshot.py   # regenerate snapshot from artifacts
-    cd web && npm install                   # once
-    cd web && npm run dev                   # http://localhost:5173
-    cd web && npm run build && npm run preview   # production build
+    cd frontend && npm install                   # once
+    cd frontend && npm run dev                   # http://localhost:5173
+    cd frontend && npm run build && npm run preview   # production build
 
 Re-run the snapshot script whenever pipeline artifacts change; the landing
 shows empty states on a fresh install by design. Frontend tests:
-`cd web && npm test`.
+`cd frontend && npm test`.

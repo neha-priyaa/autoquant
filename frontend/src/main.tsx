@@ -35,6 +35,10 @@ function Landing() {
   );
 }
 
+function LandingLayout() {
+  return <><Nav /><Landing /><Footer /></>;
+}
+
 function SpecDetailRoute() {
   const { slug } = useParams();
   return <SpecDetail slug={slug ?? ""} />;
@@ -46,15 +50,11 @@ function BacktestDetailRoute() {
 }
 
 export default function App() {
-  const base = normalizeBasename(import.meta.env.BASE_URL);
-  const prefix = base === "/" ? "" : base;
-  const isWorkspace = window.location.pathname.startsWith(prefix + "/workspace");
   return (
     <StrictMode>
       <BrowserRouter basename={normalizeBasename(import.meta.env.BASE_URL)}>
-        {!isWorkspace && <Nav />}
         <Routes>
-          <Route path="/" element={<Landing />} />
+          <Route path="/" element={<LandingLayout />} />
           <Route path="/workspace" element={<Shell />}>
             <Route index element={<Overview />} />
             <Route path="feed" element={<Feed />} />
@@ -67,7 +67,6 @@ export default function App() {
             <Route path="catalog" element={<CatalogScreen />} />
           </Route>
         </Routes>
-        {!isWorkspace && <Footer />}
       </BrowserRouter>
     </StrictMode>
   );

@@ -225,3 +225,66 @@ class TestWorkspaceFailures:
         w = load_module().build_snapshot(tmp_path)["workspace"]
         assert [f["slug"] for f in w["failed"]] == ["live"]
         assert "bad kwarg" in w["failed"][0]["error"]
+
+
+class TestReviewRegressions:
+    def test_undefined_metrics_produce_strict_json(self, tmp_path):
+        results = tmp_path / "results"
+        results.mkdir()
+        (results / "leaderboard.jsonl").write_text(json.dumps({
+            "slug": "no-trades", "net_sharpe": float("nan"),
+            "deflated_sharpe": float("inf"),
+            "extra": {"metrics": [float("-inf"), 1.0]},
+        }) + "\n")
+        ws = load_module()
+        out = tmp_path / "snapshot.json"
+        ws.main_with(["--root", str(tmp_path), "--out", str(out)])
+        def reject_constant(value: str) -> None:
+            raise ValueError(value)
+
+        snap = json.loads(out.read_text(), parse_constant=reject_constant)
+        run = snap["workspace"]["runs"][0]
+        assert run["netSharpe"] is None
+        assert run["net_sharpe"] is None
+        assert run["deflated_sharpe"] is None
+        assert run["extra"]["metrics"] == [None, 1.0]
+
+    def test_current_external_schema_preserves_identity_and_reason(self, tmp_path):
+        results = tmp_path / "results" / "external"
+        results.mkdir(parents=True)
+        rows = [{"repo": repo, "path": "src/demo.py", "kind": "script",
+                 "artifact_key": f"{repo}|script|src/demo.py", "verdict": "error",
+                 "reason": "missing checkout", "run_at": "2026-10-27T12:34:56Z"}
+                for repo in ("one/repo", "two/repo")]
+        (results / "leaderboard.jsonl").write_text(
+            "\n".join(json.dumps(row) for row in rows))
+        snap = load_module().build_snapshot(tmp_path)
+        runs = snap["workspace"]["runs"]
+        assert runs[0]["slug"] != runs[1]["slug"]
+        assert "src/demo.py" in runs[0]["slug"]
+        assert runs[0]["artifactKey"] == rows[0]["artifact_key"]
+        assert runs[0]["error"] == "missing checkout"
+        assert runs[0]["runAt"] == rows[0]["run_at"]
+        assert {row["slug"] for row in snap["archive"]} == {
+            run["slug"] for run in runs}
+
+    def test_stage_counts_follow_artifacts_not_upstream_totals(self, tmp_path):
+        for directory in ("data/pages", "specs", "strategies", "results", "reports"):
+            (tmp_path / directory).mkdir(parents=True, exist_ok=True)
+        (tmp_path / "data/articles.jsonl").write_text(
+            '{"slug":"a","stage":"discovered"}\n'
+            '{"slug":"b","stage":"fetch_failed"}\n')
+        (tmp_path / "data/pages/a.md").write_text("cached page")
+        (tmp_path / "specs/a.yaml").write_text("meta:\n  slug: a\n")
+        (tmp_path / "results/leaderboard.jsonl").write_text('{"slug":"a"}\n')
+        stages = load_module().build_snapshot(tmp_path)["stages"]
+        assert [stage["count"] for stage in stages] == [2, 1, 0, 1, 0, 1, 0]
+
+    def test_article_runs_keep_full_timestamps(self, tmp_path):
+        (tmp_path / "results").mkdir()
+        timestamp = "2026-10-27T23:59:00Z"
+        (tmp_path / "results/leaderboard.jsonl").write_text(json.dumps({
+            "slug": "a", "run_at": timestamp}) + "\n")
+        snap = load_module().build_snapshot(tmp_path)
+        assert snap["workspace"]["runs"][0]["runAt"] == timestamp
+        assert snap["archive"][0]["runAt"] == timestamp

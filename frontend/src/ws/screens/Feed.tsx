@@ -27,9 +27,9 @@ export default function Feed() {
           onChange={(e) => setQ(e.target.value)}
           placeholder="Search title or source…"
           aria-label="Search articles"
-          className="w-72 border border-line bg-bg px-3 py-2 font-mono text-sm text-ink placeholder:text-dim/60"
+          className="w-72 max-w-full border border-line bg-bg px-3 py-2 font-mono text-sm text-ink placeholder:text-dim/60"
         />
-        <div role="group" aria-label="Stage filter" className="flex gap-2">
+        <div role="group" aria-label="Stage filter" className="flex flex-wrap gap-2">
           {STAGES.map((s) => (
             <button key={s} onClick={() => setStage(s)}
               aria-pressed={stage === s}
@@ -64,7 +64,7 @@ export default function Feed() {
                   </span>
                   {a.triageScore !== null && (
                     <span className="font-mono text-[11px] text-dim">
-                      triage {a.triageScore}/10
+                      triage {a.triageScore}/5
                     </span>
                   )}
                 </div>

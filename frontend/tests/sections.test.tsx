@@ -51,6 +51,14 @@ const HEADLINE: Headline = {
 };
 
 describe("Archive", () => {
+  it("orders runs on the same date by full timestamp", () => {
+    render(<MemoryRouter><Archive rows={[
+      { ...ROWS[0], runAt: "2026-02-01T09:00:00Z" },
+      { ...ROWS[0], slug: "s2", runAt: "2026-02-01T10:00:00Z" },
+    ]} /></MemoryRouter>);
+    expect(screen.getAllByText(/^s[12]$/)[0]).toHaveTextContent("s2");
+  });
+
   it("renders rows sorted by date by default", () => {
     render(<MemoryRouter><Archive rows={ROWS} /></MemoryRouter>);
     const slugs = screen.getAllByText(/s[12]/).map((e) => e.textContent);

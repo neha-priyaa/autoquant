@@ -21,7 +21,7 @@ export default function Triage() {
 
       <label className="mt-6 flex items-center gap-3 font-mono text-xs text-dim">
         MIN SCORE {minScore}
-        <input type="range" min={0} max={10} value={minScore}
+        <input type="range" min={0} max={5} value={minScore}
                onChange={(e) => setMinScore(Number(e.target.value))}
                className="accent-accent" aria-label="Minimum triage score" />
         <span className="ml-auto">{rows.length} IDEAS</span>
@@ -29,7 +29,9 @@ export default function Triage() {
 
       {rows.length === 0 ? (
         <p className="mt-16 border border-dashed border-line p-12 text-center text-dim">
-          Nothing triaged yet — run triage.py, then regenerate the snapshot.
+          {workspace.triage.length === 0
+            ? "Nothing triaged yet — run triage.py, then regenerate the snapshot."
+            : "No ideas match the minimum score — lower the filter to see more."}
         </p>
       ) : (
         <ol className="mt-8 space-y-4">
@@ -39,7 +41,7 @@ export default function Triage() {
                 <h2 className="min-w-0 text-lg font-light">{t.title}</h2>
                 <span className="shrink-0 font-mono text-2xl tabular-nums text-accent">
                   {t.score ?? "—" }
-                  <span className="text-xs text-dim">/10</span>
+                  <span className="text-xs text-dim">/5</span>
                 </span>
               </div>
               <p className="mt-2 max-w-3xl text-sm leading-relaxed text-dim">{t.claim}</p>

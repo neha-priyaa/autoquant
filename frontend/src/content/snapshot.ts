@@ -3,10 +3,10 @@
  * landing always renders (empty states, never fake content). */
 
 export interface Counts { articles: number; triaged: number; specs: number; backtests: number; external: number; }
-export interface Stage { index: string; name: string; description: string; artifact: string; doc: string; }
+export interface Stage { index: string; name: string; description: string; artifact: string; doc: string; count?: number | null; }
 export interface ChainStage { kind: "article" | "spec" | "code" | "report"; title: string; body: string; repoPath: string; }
 export interface Chain { slug: string; title: string; stages: ChainStage[]; }
-export interface ArchiveRow { slug: string; source: string; lane: "article" | "external"; status: string | null; netSharpe: number | null; beatsNull: boolean | null; date: string; }
+export interface ArchiveRow { slug: string; source: string; lane: "article" | "external"; status: string | null; netSharpe: number | null; beatsNull: boolean | null; date: string; runAt?: string; }
 export interface Headline { slug: string; metrics: { label: string; strategy: string; benchmark: string }[]; }
 export interface CatalogInfo { series: number; providers: string[]; }
 export interface Snapshot { generatedAt: string; counts: Counts; stages: Stage[]; chains: Chain[]; archive: ArchiveRow[]; headline: Headline | null; catalog: CatalogInfo; }

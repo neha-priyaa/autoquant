@@ -2,15 +2,12 @@ import { Link } from "react-router-dom";
 import { MetricReadout } from "../../components/MetricReadout";
 import { StatusDot } from "../../components/StatusDot";
 import { snapshot } from "../../content/snapshot";
-import { workspace } from "../../content/workspace";
+import { workspace, newestRuns } from "../../content/workspace";
 
 export default function Overview() {
   const c = snapshot.counts;
-  const latest = [...workspace.runs].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5);
-  const stages = snapshot.stages.map((s, i) => ({
-    ...s,
-    count: [c.articles, c.articles, c.triaged, c.specs, c.specs, c.backtests + c.external, c.backtests][i] ?? 0,
-  }));
+  const latest = newestRuns(workspace.runs).slice(0, 5);
+  const stages = snapshot.stages;
   return (
     <div>
       <h1 className="text-4xl font-light">Research Overview</h1>
@@ -30,7 +27,7 @@ export default function Overview() {
         {stages.map((s) => (
           <li key={s.index} className="flex items-baseline justify-between border-b border-line py-3">
             <span className="text-sm">{s.index} · {s.name}</span>
-            <span className="font-mono text-xs text-dim">{s.count} — {s.artifact}</span>
+            <span className="font-mono text-xs text-dim">{s.count ?? "—"} — {s.artifact}</span>
           </li>
         ))}
       </ol>
@@ -40,8 +37,8 @@ export default function Overview() {
         <p className="mt-4 text-sm text-dim">No backtest runs yet.</p>
       ) : (
         <ol className="mt-4 border-t border-line">
-          {latest.map((r) => (
-            <li key={`${r.lane}-${r.slug}-${r.date}`} className="flex items-center gap-4 border-b border-line py-3">
+          {latest.map((r, index) => (
+            <li key={`${r.lane}-${r.slug}-${r.runAt ?? r.date}-${index}`} className="flex items-center gap-4 border-b border-line py-3">
               <StatusDot verdict={r.status} />
               <span className="min-w-0 flex-1 truncate font-mono text-sm">{r.slug}</span>
               <span className="font-mono text-xs text-dim">{r.date}</span>

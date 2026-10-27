@@ -1,10 +1,10 @@
 import { Link } from "react-router-dom";
 import { StatusDot } from "../../components/StatusDot";
-import { workspace } from "../../content/workspace";
+import { workspace, newestRuns } from "../../content/workspace";
 
 export function BacktestDetail({ slug }: { slug: string }) {
   const report = workspace.reports[slug];
-  const run = workspace.runs.find((r) => r.slug === slug);
+  const run = newestRuns(workspace.runs).find((r) => r.slug === slug && r.lane === "article");
   if (!report && !run) {
     return <p className="mt-10 text-dim">No backtest run found for {slug}.</p>;
   }
@@ -31,6 +31,7 @@ export function BacktestDetail({ slug }: { slug: string }) {
 
       {report && (
         <>
+          <p className="mt-6 text-sm text-dim">Latest report for this strategy. Historical report versions are not retained.</p>
           <div className="mt-8 overflow-x-auto border border-line">
             <table className="w-full text-left font-mono text-sm">
               <thead>
@@ -72,7 +73,7 @@ export function BacktestDetail({ slug }: { slug: string }) {
 }
 
 export default function Backtests() {
-  const runs = [...workspace.runs].sort((a, b) => b.date.localeCompare(a.date));
+  const runs = newestRuns(workspace.runs);
   return (
     <div>
       <h1 className="text-4xl font-light">Backtests</h1>
@@ -82,10 +83,11 @@ export default function Backtests() {
         </p>
       ) : (
         <ol className="mt-8 border-t border-line">
-          {runs.map((r) => (
-            <li key={`${r.lane}-${r.slug}-${r.date}`} className="border-b border-line">
+          {runs.map((r, index) => (
+            <li key={`${r.lane}-${r.slug}-${r.runAt ?? r.date}-${index}`} className="border-b border-line">
               {r.lane === "article" ? (
                 <Link to={`/workspace/backtests/${r.slug}`}
+                      aria-label={`${r.slug} — view latest report`}
                       className="flex items-center gap-4 py-4 transition-colors hover:bg-surface/60">
                   <StatusDot verdict={r.status} />
                   <span className="min-w-0 flex-1 truncate font-mono text-sm">{r.slug}</span>

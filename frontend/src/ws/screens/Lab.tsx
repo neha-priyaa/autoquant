@@ -56,7 +56,7 @@ export function SpecDetail({ slug }: { slug: string }) {
       <div className="mt-6 flex flex-wrap items-center gap-4">
         {run && (
           <Link to={`/workspace/backtests/${slug}`} className="font-mono text-xs text-accent">
-            view backtest report →
+            view latest backtest report →
           </Link>
         )}
         <CopyButton text={spec.raw} label="spec YAML" />

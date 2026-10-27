@@ -5,7 +5,7 @@ import { snapshot } from "./snapshot";
 export interface Article { slug: string | null; title: string | null; source: string | null; url: string | null; posted: string | null; stage: string | null; blurb: string; triageScore: number | null; }
 export interface TriageRow { slug: string | null; title: string | null; url: string | null; claim: string; assetClass: string | null; score: number | null; redFlags: string[]; missing: string[]; reason: string; }
 export interface SpecSummary { slug: string; title: string | null; claim: string | null; universe: string[]; bar: string | null; signal: string | null; entry: string | null; exit: string | null; direction: string | null; status: string | null; hasCode: boolean; raw: string; }
-export interface RunRow { slug: string | null; lane: "article" | "external"; status: string | null; netSharpe: number | null; beatsNull: boolean | null; date: string; flags: string[]; error: string | null; }
+export interface RunRow { slug: string | null; lane: "article" | "external"; status: string | null; netSharpe: number | null; beatsNull: boolean | null; date: string; runAt?: string; repo?: string; artifactPath?: string; artifactKey?: string; flags: string[]; error: string | null; }
 export interface Report { metrics: { label: string; strategy: string; benchmark: string }[]; text: string; }
 export interface FailedRow { slug: string; error: string; }
 export interface CatalogEntry { id: string; title: string | null; provider: string; tags: string[]; frequency: string | null; coverageStart: string | null; license: string | null; notes: string | null; fallback: string | null; }
@@ -19,6 +19,13 @@ const empty: Workspace = {
   articles: [], triage: [], specs: [], runs: [], reports: {},
   failed: [], catalog: [], catalogCount: 0,
 };
+
+/** Full timestamps order same-day runs; later appended rows win timestamp ties.
+ * Older snapshots only carry a date, so retain that as a fallback. */
+export function newestRuns(runs: RunRow[]): RunRow[] {
+  const timestamp = (run: RunRow) => Date.parse(run.runAt || run.date) || 0;
+  return [...runs].reverse().sort((a, b) => timestamp(b) - timestamp(a));
+}
 
 export function loadWorkspace(raw: unknown): Workspace {
   if (!raw || typeof raw !== "object") return empty;

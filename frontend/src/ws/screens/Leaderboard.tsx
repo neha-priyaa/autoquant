@@ -33,20 +33,23 @@ export default function Leaderboard() {
           </span>
         ),
       }),
-      helper.accessor("netSharpe", {
+      helper.accessor((row) => row.netSharpe ?? undefined, {
+        id: "netSharpe",
         header: "Net Sharpe",
         cell: (c) =>
-          c.getValue() === null ? (
+          c.getValue() === undefined ? (
             <span className="text-dim">—</span>
           ) : (
             <span className="tabular-nums">{c.getValue()!.toFixed(2)}</span>
           ),
         sortingFn: "basic",
+        sortUndefined: "last",
       }),
-      helper.accessor("beatsNull", {
+      helper.accessor((row) => row.beatsNull ?? undefined, {
+        id: "beatsNull",
         header: "Beats null",
         cell: (c) =>
-          c.getValue() === null ? (
+          c.getValue() === undefined ? (
             <span className="text-dim">—</span>
           ) : c.getValue() ? (
             <span className="text-accent">yes</span>
@@ -54,6 +57,7 @@ export default function Leaderboard() {
             <span className="text-fail">no</span>
           ),
         sortingFn: "basic",
+        sortUndefined: "last",
       }),
       helper.accessor("date", {
         header: "Run date",

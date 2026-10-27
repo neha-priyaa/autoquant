@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import sys
 from datetime import datetime, timezone
@@ -55,13 +56,24 @@ METRIC_LABELS = re.compile(
     r"Gross Sharpe|Deflated Sharpe)$", re.I)
 
 
+def _finite_json(value: object) -> object:
+    """Represent undefined numerical evidence as JSON null, including nested fields."""
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    if isinstance(value, dict):
+        return {key: _finite_json(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_finite_json(item) for item in value]
+    return value
+
+
 def load_jsonl(path: Path) -> list[dict]:
     if not path.exists():
         return []
     rows = []
     for line in path.read_text().splitlines():
         try:
-            row = json.loads(line)
+            row = _finite_json(json.loads(line))
         except json.JSONDecodeError:
             continue
         if isinstance(row, dict):
@@ -104,16 +116,28 @@ def _archive_row_article(row: dict, root: Path) -> dict | None:
     return {"slug": slug, "source": source, "lane": "article",
             "status": row.get("verdict"), "netSharpe": row.get("net_sharpe"),
             "beatsNull": row.get("beats_null_95"),
-            "date": (row.get("run_at") or "")[:10]}
+            "date": (row.get("run_at") or "")[:10],
+            "runAt": row.get("run_at") or ""}
+
+
+def _external_identity(row: dict) -> dict[str, str]:
+    """Accept current runner fields and snapshots from the original runner."""
+    path = row.get("path") or row.get("artifact") or ""
+    repo = row.get("repo") or ""
+    return {"slug": f"{repo}/{path}".strip("/"), "repo": repo,
+            "artifactPath": path,
+            "artifactKey": row.get("artifact_key") or
+            f"{repo}|{row.get('kind') or ''}|{path}"}
 
 
 def _archive_row_external(row: dict) -> dict | None:
     if not row.get("repo"):
         return None
-    return {"slug": Path(row.get("artifact") or "").stem,
+    return {"slug": _external_identity(row)["slug"],
             "source": row["repo"], "lane": "external",
             "status": row.get("verdict"), "netSharpe": None,
-            "beatsNull": None, "date": (row.get("run_at") or "")[:10]}
+            "beatsNull": None, "date": (row.get("run_at") or "")[:10],
+            "runAt": row.get("run_at") or ""}
 
 
 def _spec_summary(path: Path, has_code: bool) -> dict | None:
@@ -160,13 +184,15 @@ def _workspace(root: Path, articles: list[dict], triage: list[dict],
                  status=r.get("verdict"), netSharpe=r.get("net_sharpe"),
                  beatsNull=r.get("beats_null_95"),
                  date=(r.get("run_at") or "")[:10],
+                 runAt=r.get("run_at") or "",
                  flags=r.get("flags") or [], error=None)
             for r in lead]
-    runs += [{"slug": Path(r.get("artifact") or "").stem,
+    runs += [{**_external_identity(r),
               "lane": "external", "status": r.get("verdict"),
               "netSharpe": None, "beatsNull": None,
               "date": (r.get("run_at") or "")[:10],
-              "flags": [], "error": (r.get("error") or "")[:300]}
+              "runAt": r.get("run_at") or "",
+              "flags": [], "error": (r.get("reason") or r.get("error") or "")[:300]}
              for r in external]
 
     reports = {}
@@ -247,7 +273,7 @@ def build_snapshot(root: Path) -> dict:
 
     archive = [r for r in (_archive_row_article(r, root) for r in lead) if r]
     archive += [r for r in (_archive_row_external(r) for r in external) if r]
-    archive.sort(key=lambda r: r["date"], reverse=True)
+    archive.sort(key=lambda r: r["runAt"], reverse=True)
     archive = archive[:MAX_ARCHIVE]
 
     chains = []
@@ -303,14 +329,22 @@ def build_snapshot(root: Path) -> dict:
         except (json.JSONDecodeError, OSError):
             pass
 
+    stage_counts = [len(articles), len(list((root / "data/pages").glob("*.md"))),
+                    len(triage), len(specs),
+                    len([p for p in (root / "strategies").glob("*.py")
+                         if p.name != "__init__.py"]),
+                    len(lead) + len(external),
+                    len(list((root / "reports").glob("*.md")))]
+
     return {
         "generatedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "counts": {"articles": len(articles), "triaged": len(triage),
                    "specs": len(specs), "backtests": len(lead),
                    "external": len(external)},
         "stages": [{"index": i, "name": n, "description": d, "artifact": a,
+                    "count": count,
                     "doc": "https://github.com/uberdeveloper/autoquant#readme"}
-                   for i, n, d, a in STAGES],
+                   for (i, n, d, a), count in zip(STAGES, stage_counts)],
         "chains": chains,
         "archive": archive,
         "headline": headline,
@@ -327,7 +361,7 @@ def main_with(argv: list[str] | None = None) -> int:
     snap = build_snapshot(Path(args.root))
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(snap, ensure_ascii=False, indent=1) + "\n")
+    out.write_text(json.dumps(snap, ensure_ascii=False, indent=1, allow_nan=False) + "\n")
     print(f"snapshot -> {out} ({sum(snap['counts'].values())} artifacts)")
     return 0
 

@@ -6,6 +6,7 @@ import Triage from "../src/ws/screens/Triage";
 import Leaderboard from "../src/ws/screens/Leaderboard";
 import Backtests, { BacktestDetail } from "../src/ws/screens/Backtests";
 import Overview from "../src/ws/screens/Overview";
+import CatalogScreen from "../src/ws/screens/CatalogScreen";
 import { loadWorkspace } from "../src/content/workspace";
 import type { RunRow } from "../src/content/workspace";
 import { snapshot } from "../src/content/snapshot";
@@ -172,5 +173,27 @@ describe("loadWorkspace", () => {
   it("degrades to empty on garbage", () => {
     expect(loadWorkspace(null).articles).toEqual([]);
     expect(loadWorkspace(42).runs).toEqual([]);
+  });
+});
+
+describe("Catalog", () => {
+  it("distinguishes a search with no matches and restores results on clear", async () => {
+    render(<CatalogScreen />);
+    const search = screen.getByRole("textbox", { name: "Search catalog" });
+    await userEvent.type(search, "no-such-series");
+    expect(screen.getByText("No series match your search.")).toBeInTheDocument();
+    expect(screen.queryByText(/regenerate the snapshot/)).not.toBeInTheDocument();
+    await userEvent.clear(search);
+    expect(screen.getByText("yahoo:SPY")).toBeInTheDocument();
+  });
+
+  it("keeps the missing-artifact guidance for a genuinely empty catalog", () => {
+    const catalog = W.catalog.splice(0);
+    try {
+      render(<CatalogScreen />);
+      expect(screen.getByText(/Catalog is empty/)).toBeInTheDocument();
+    } finally {
+      W.catalog.push(...catalog);
+    }
   });
 });

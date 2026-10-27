@@ -31,7 +31,9 @@ export default function CatalogScreen() {
 
       {rows.length === 0 ? (
         <p className="mt-16 border border-dashed border-line p-12 text-center text-dim">
-          Catalog is empty — regenerate the snapshot (catalog.json at the repo root).
+          {workspace.catalog.length === 0
+            ? "Catalog is empty — regenerate the snapshot (catalog.json at the repo root)."
+            : "No series match your search."}
         </p>
       ) : (
         <ol className="mt-8 border-t border-line">

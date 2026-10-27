@@ -67,6 +67,33 @@
 - Before a commit, run the relevant test suite and do not commit with known
   failing tests unless the user explicitly directs otherwise.
 
+## Frontend testing
+
+- For each bug fix, first add a focused regression test that fails for the
+  reported behavior, then implement the fix.
+- Test observable behavior: what users see, click, navigate, and copy.
+  Avoid assertions tied only to component internals or CSS class names.
+- Cover loading, empty, populated, and error states where applicable.
+  Filtering populated data to zero matches must have its own test.
+- Treat imported JSON and API responses as untrusted. Test missing fields,
+  null entries, wrong types, and malformed nested structures.
+- Mock network requests, clipboard access, and other browser integrations.
+  Tests must not depend on live services or locally installed external tools.
+- Test asynchronous actions for success, failure, and repeated interaction.
+  Display success only after the operation succeeds.
+- For sorting and filtering, assert the resulting visible items and order.
+  Verify that items remain visible after updates.
+- For generated content, test the producer and rendered result together.
+  Preserve complete content or clearly disclose truncation.
+- Use accessible names, labels, and roles when selecting interactive elements.
+  Check keyboard operation for changed controls.
+- For layout or navigation changes, check a narrow mobile viewport and desktop
+  in a real browser. Verify usable controls, overflow, and direct route loading.
+- Keep tests in the configured test directories. Ensure every committed test
+  file is collected by its intended runner.
+- Before committing, run relevant tests and the production build, including
+  TypeScript checks. Report failures and environment limitations explicitly.
+
 ## Running the project
 
 - Use `uv` for the project environment, dependency management, and command

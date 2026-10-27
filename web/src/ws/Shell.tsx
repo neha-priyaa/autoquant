@@ -1,10 +1,16 @@
 import { NavLink, Outlet } from "react-router-dom";
 import {
   ArrowLeft, BarChart3, FlaskConical, LayoutDashboard,
-  Library, ListFilter, Newspaper, Trophy,
+  Library, ListFilter, Moon, Newspaper, Sun, Terminal, Trophy, Zap,
 } from "lucide-react";
 import { useTheme } from "../lib/theme";
-import { Moon, Sun } from "lucide-react";
+
+const THEME_ICON = {
+  dark: Moon,
+  light: Sun,
+  terminal: Terminal,
+  amber: Zap,
+} as const;
 
 const TABS = [
   { to: "/workspace", label: "Overview", icon: LayoutDashboard, end: true },
@@ -48,11 +54,15 @@ export default function Shell() {
         <div className="mt-auto flex flex-col gap-1 px-2">
           <button
             onClick={toggle}
-            aria-label="Toggle theme"
+            aria-label={`Switch theme (current: ${theme})`}
+            title={`theme: ${theme} — click to cycle`}
             className="flex items-center gap-3 px-2 py-2 text-sm text-dim transition-colors hover:text-ink"
           >
-            {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-            {theme === "dark" ? "Light mode" : "Dark mode"}
+            {(() => {
+              const Icon = THEME_ICON[theme];
+              return <Icon className="h-4 w-4" />;
+            })()}
+            {theme} skin
           </button>
           <NavLink to="/" className="flex items-center gap-3 px-2 py-2 text-sm text-dim transition-colors hover:text-ink">
             <ArrowLeft className="h-4 w-4" /> Landing

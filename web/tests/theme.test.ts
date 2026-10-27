@@ -1,5 +1,5 @@
 import { renderHook, act } from "@testing-library/react";
-import { useTheme } from "../src/lib/theme";
+import { useTheme, THEME_ORDER } from "../src/lib/theme";
 
 describe("useTheme", () => {
   beforeEach(() => {
@@ -19,13 +19,23 @@ describe("useTheme", () => {
     expect(result.current.theme).toBe("light");
   });
 
-  it("toggle flips the theme and persists it", () => {
+  it("cycles through all four skins and persists each", () => {
     const { result } = renderHook(() => useTheme());
-    act(() => result.current.toggle());
-    expect(result.current.theme).toBe("light");
-    expect(document.documentElement.dataset.theme).toBe("light");
-    expect(localStorage.getItem("aq-theme")).toBe("light");
-    act(() => result.current.toggle());
-    expect(localStorage.getItem("aq-theme")).toBe("dark");
+    for (const expected of ["light", "terminal", "amber", "dark"]) {
+      act(() => result.current.toggle());
+      expect(result.current.theme).toBe(expected);
+      expect(document.documentElement.dataset.theme).toBe(expected);
+      expect(localStorage.getItem("aq-theme")).toBe(expected);
+    }
+  });
+
+  it("coerces an unknown stored theme to dark", () => {
+    document.documentElement.dataset.theme = "hotdog" as never;
+    const { result } = renderHook(() => useTheme());
+    expect(result.current.theme).toBe("dark");
+  });
+
+  it("exposes the cycle order for the toggle", () => {
+    expect(THEME_ORDER).toEqual(["dark", "light", "terminal", "amber"]);
   });
 });

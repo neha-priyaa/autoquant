@@ -26,6 +26,31 @@ html[data-theme="light"] {
   --color-line: rgba(22, 24, 26, 0.15);
   color-scheme: light;
 }
+
+/* Terminal — phosphor green on blue-black (accent 15.1:1, ink 15.2:1) */
+html[data-theme="terminal"] {
+  --color-bg: #060a12;
+  --color-surface: #0c1322;
+  --color-ink: #d8e2f0;
+  --color-dim: #6b7a94;
+  --color-accent: #3dffa2;
+  --color-fail: #ff6d5e;
+  --color-line: rgba(216, 226, 240, 0.14);
+  color-scheme: dark;
+}
+
+/* Amber — classic finance terminal (accent 10.7:1, ink 16.9:1) */
+html[data-theme="amber"] {
+  --color-bg: #0d0b07;
+  --color-surface: #17130c;
+  --color-ink: #f2ede4;
+  --color-dim: #9a917f;
+  --color-accent: #ffb000;
+  --color-fail: #ff7a5c;
+  --color-line: rgba(242, 237, 228, 0.14);
+  color-scheme: dark;
+}
+
 html:not([data-theme="light"]) { color-scheme: dark; }
 
 html {

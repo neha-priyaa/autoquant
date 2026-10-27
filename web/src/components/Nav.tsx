@@ -1,7 +1,20 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowUpRight, Menu, Moon, Sun, X } from "lucide-react";
+import { ArrowUpRight, Menu, Moon, Sun, Terminal, X, Zap } from "lucide-react";
 import { useTheme } from "../lib/theme";
+
+const THEME_ICON = {
+  dark: Moon,
+  light: Sun,
+  terminal: Terminal,
+  amber: Zap,
+} as const;
+const NEXT_LABEL = {
+  dark: "light",
+  light: "terminal",
+  terminal: "amber",
+  amber: "dark",
+} as const;
 
 const LINKS: [string, string][] = [
   ["Product", "#product"],
@@ -45,10 +58,15 @@ export default function Nav() {
           ))}
           <button
             onClick={toggle}
-            aria-label="Toggle theme"
-            className="text-dim transition-colors hover:text-ink"
+            aria-label={`Switch theme (current: ${theme})`}
+            title={`theme: ${theme} → ${NEXT_LABEL[theme]}`}
+            className="flex items-center gap-2 text-dim transition-colors hover:text-ink"
           >
-            {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            {(() => {
+              const Icon = THEME_ICON[theme];
+              return <Icon className="h-4 w-4" />;
+            })()}
+            <span className="font-mono text-[11px] uppercase tracking-widest">{theme}</span>
           </button>
           <Link
             to="/workspace"
@@ -58,8 +76,11 @@ export default function Nav() {
           </Link>
         </div>
         <div className="flex items-center gap-4 md:hidden">
-          <button onClick={toggle} aria-label="Toggle theme" className="text-dim">
-            {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          <button onClick={toggle} aria-label={`Switch theme (current: ${theme})`} className="text-dim">
+            {(() => {
+              const Icon = THEME_ICON[theme];
+              return <Icon className="h-4 w-4" />;
+            })()}
           </button>
           <button aria-label="Menu" onClick={() => setOpen(!open)}>
             {open ? <X /> : <Menu />}

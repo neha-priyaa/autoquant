@@ -125,6 +125,59 @@ html[data-theme="brutal"] h2 {
   letter-spacing: -0.02em;
 }
 
+/* Colorblind dark — azure/orange axis (safe under deutan & protan:
+   accent/fail dE 27.6/22.8). accent 9.6:1, ink 16.0:1, dim 6.3:1 */
+html[data-theme="cb-dark"] {
+  --color-bg: #0b0d10;
+  --color-surface: #131720;
+  --color-ink: #e6e9ee;
+  --color-dim: #8a93a3;
+  --color-accent: #4fc1ff;
+  --color-fail: #ffb454;
+  --color-line: rgba(230, 233, 238, 0.15);
+  color-scheme: dark;
+}
+
+/* Colorblind light — same azure/orange axis (dE 30.2/25.4).
+   accent 5.9:1, ink 17.4:1, dim 6.8:1 */
+html[data-theme="cb-light"] {
+  --color-bg: #f6f7f9;
+  --color-surface: #ffffff;
+  --color-ink: #101319;
+  --color-dim: #4f5765;
+  --color-accent: #0a5fb8;
+  --color-fail: #c4551b;
+  --color-line: rgba(16, 19, 25, 0.15);
+  color-scheme: light;
+}
+
+/* Zenburn — the classic muted desert editor theme (accent 5.6:1,
+   ink 7.6:1, dim 4.8:1). accent/fail dE 7.0 deutan — floor band, legal
+   with our always-labeled status dots. */
+html[data-theme="zenburn"] {
+  --color-bg: #3f3f3f;
+  --color-surface: #4a4a4a;
+  --color-ink: #dcdccc;
+  --color-dim: #b0b0a6;
+  --color-accent: #a9c4a9;
+  --color-fail: #d7a375;
+  --color-line: rgba(220, 220, 204, 0.18);
+  color-scheme: dark;
+}
+
+/* Matrix — phosphor monochrome; fail is white (dE 20.8/19.8 vs green,
+   monochrome aesthetic preserved). accent 14.5:1, ink 17.6:1, dim 8.8:1 */
+html[data-theme="matrix"] {
+  --color-bg: #010d01;
+  --color-surface: #061708;
+  --color-ink: #c8ffc8;
+  --color-dim: #6fbe6f;
+  --color-accent: #00ff41;
+  --color-fail: #f0fff0;
+  --color-line: rgba(200, 255, 200, 0.2);
+  color-scheme: dark;
+}
+
 html {
   background: var(--color-bg);
   color: var(--color-ink);

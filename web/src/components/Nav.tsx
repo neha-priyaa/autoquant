@@ -1,20 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import {
-  ArrowUpRight, Feather, Menu, Moon, Sparkles, Square, Sun, Terminal, X, Zap,
-} from "lucide-react";
-import { useTheme, THEME_ORDER } from "../lib/theme";
+import { ArrowUpRight, Menu, Moon, Palette, Sun, X } from "lucide-react";
+import { useTheme, THEMES, THEME_ORDER, type Theme } from "../lib/theme";
 
-const THEME_ICON = {
-  dark: Moon,
-  light: Sun,
-  terminal: Terminal,
-  amber: Zap,
-  ivory: Feather,
-  noir: Sparkles,
-  brutal: Square,
-} as const;
-const next = (t: keyof typeof THEME_ICON) =>
+const next = (t: Theme) =>
   THEME_ORDER[(THEME_ORDER.indexOf(t) + 1) % THEME_ORDER.length];
 
 const LINKS: [string, string][] = [
@@ -27,7 +16,8 @@ const LINKS: [string, string][] = [
 export default function Nav() {
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
-  const { theme, toggle } = useTheme();
+  const { theme, setMode, cycleTheme } = useTheme();
+  const mode = THEMES[theme].mode;
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 24);
     window.addEventListener("scroll", onScroll, { passive: true });
@@ -58,15 +48,20 @@ export default function Nav() {
             </a>
           ))}
           <button
-            onClick={toggle}
-            aria-label={`Switch theme (current: ${theme})`}
+            onClick={() => setMode(mode === "dark" ? "light" : "dark")}
+            aria-label={`Switch to ${mode === "dark" ? "light" : "dark"} mode`}
+            title={`mode: ${mode} — like your phone's dark mode`}
+            className="text-dim transition-colors hover:text-ink"
+          >
+            {mode === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          </button>
+          <button
+            onClick={cycleTheme}
+            aria-label={`Cycle skin (current: ${theme})`}
             title={`skin: ${theme} → next: ${next(theme)}`}
             className="flex items-center gap-2 text-dim transition-colors hover:text-ink"
           >
-            {(() => {
-              const Icon = THEME_ICON[theme];
-              return <Icon className="h-4 w-4" />;
-            })()}
+            <Palette className="h-4 w-4" />
             <span className="font-mono text-[11px] uppercase tracking-widest">{theme}</span>
           </button>
           <Link
@@ -77,11 +72,15 @@ export default function Nav() {
           </Link>
         </div>
         <div className="flex items-center gap-4 md:hidden">
-          <button onClick={toggle} aria-label={`Switch theme (current: ${theme})`} className="text-dim">
-            {(() => {
-              const Icon = THEME_ICON[theme];
-              return <Icon className="h-4 w-4" />;
-            })()}
+          <button
+            onClick={() => setMode(mode === "dark" ? "light" : "dark")}
+            aria-label={`Switch to ${mode === "dark" ? "light" : "dark"} mode`}
+            className="text-dim"
+          >
+            {mode === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          </button>
+          <button onClick={cycleTheme} aria-label={`Cycle skin (current: ${theme})`} className="text-dim">
+            <Palette className="h-4 w-4" />
           </button>
           <button aria-label="Menu" onClick={() => setOpen(!open)}>
             {open ? <X /> : <Menu />}

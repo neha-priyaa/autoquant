@@ -6,19 +6,34 @@ import { workspace } from "../../content/workspace";
 
 function CopyButton({ text, label }: { text: string; label: string }) {
   const [done, setDone] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function copy(): Promise<void> {
+    setError(null);
+    setDone(false);
+    if (!navigator.clipboard?.writeText) {
+      setError("Clipboard is unavailable here. Open the YAML preview to copy it manually.");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      setDone(true);
+      setTimeout(() => setDone(false), 1500);
+    } catch {
+      setError("Could not copy. Allow clipboard access or copy from the YAML preview.");
+    }
+  }
   return (
-    <button
-      onClick={() => {
-        navigator.clipboard?.writeText(text).then(() => {
-          setDone(true);
-          setTimeout(() => setDone(false), 1500);
-        });
-      }}
-      aria-label={`Copy ${label}`}
-      className="inline-flex items-center gap-1 font-mono text-[11px] text-dim hover:text-accent"
-    >
-      {done ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />} copy
-    </button>
+    <>
+      <button
+        onClick={copy}
+        aria-label={`Copy ${label}`}
+        className="inline-flex items-center gap-1 font-mono text-[11px] text-dim hover:text-accent"
+      >
+        {done ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+        <span role="status">{done ? "copied" : "copy"}</span>
+      </button>
+      {error && <p role="alert" className="font-mono text-xs text-dim">{error}</p>}
+    </>
   );
 }
 

@@ -92,9 +92,9 @@ export default function Lab() {
             <li key={s.slug} className="border-b border-line">
               <Link to={`/workspace/lab/${s.slug}`}
                     className="block py-5 transition-colors hover:bg-surface/60">
-                <div className="flex items-center justify-between gap-4">
-                  <span className="min-w-0 truncate font-mono text-sm">{s.slug}</span>
-                  <span className="shrink-0 font-mono text-[11px] text-dim">
+                <div className="flex min-w-0 flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                  <span className="max-w-full min-w-0 truncate font-mono text-sm">{s.slug}</span>
+                  <span className="min-w-0 max-w-full break-words font-mono text-[11px] text-dim">
                     {s.universe.join(" / ") || "—"}
                   </span>
                 </div>

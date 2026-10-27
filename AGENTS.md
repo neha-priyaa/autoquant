@@ -73,10 +73,10 @@
   execution. Do not create or invoke a virtual environment directly.
 - Run an individual script with `uv run python <script>.py --help` before
   relying on its command-line interface.
-- This repository does not yet have a declared dependency set or test suite.
-  When either is added, declare the dependencies in a project configuration,
-  use `pytest`, and run tests with `uv run pytest` (or a focused path such as
-  `uv run pytest tests/test_runner.py`).
+- Dependencies are declared in `pyproject.toml` and locked in `uv.lock`;
+  the test suite is `pytest` (configured under `[tool.pytest.ini_options]`).
+  Run the suite with `uv run python -m pytest` (or a focused path such as
+  `uv run python -m pytest tests/test_codegen.py`).
 - Keep the README's setup, run, test, formatting, and type-check commands
   current whenever the project tooling changes.
 

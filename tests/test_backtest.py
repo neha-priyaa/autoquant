@@ -1,0 +1,651 @@
+"""Tests for backtest.py — lag, costs, metrics, validation, and reporting."""
+from __future__ import annotations
+
+import numpy as np
+import pandas as pd
+import pytest
+import yaml
+
+import backtest
+
+
+def make_prices(n=60, seed=0):
+    """Rising prices with known daily returns; open lags close by 1%."""
+    rng = np.random.default_rng(seed)
+    close = 100 * np.cumprod(1 + rng.normal(0.001, 0.01, n))
+    open_ = np.roll(close, 1) * 0.99
+    open_[0] = 99.0
+    idx = pd.bdate_range("2020-01-01", periods=n)
+    return pd.DataFrame(
+        {"open": open_, "high": close * 1.01, "low": open_ * 0.99,
+         "close": close, "volume": 1e6},
+        index=idx,
+    )
+
+
+BASE_SPEC = {
+    "signal": {"definition": "test", "lag_bars": 1},
+    "rules": {"max_leverage": 1.0},
+    "costs": {"commission_bps": 10, "slippage_bps": 10},
+}
+
+
+class TestBacktest:
+    def test_lag_is_applied_no_lookahead(self):
+        df = make_prices()
+        weights = pd.Series(1.0, index=df.index)
+        res = backtest.backtest(df, weights, BASE_SPEC)
+        # position on bar t must be the weight decided on bar t-1
+        assert res["pos"].iloc[1] == 1.0
+        assert res["pos"].iloc[0] == 0.0  # first bar has no prior decision
+
+    def test_gross_equals_position_times_asset_return(self):
+        df = make_prices()
+        w = pd.Series(1.0, index=df.index)
+        res = backtest.backtest(df, w, BASE_SPEC)
+        assert np.allclose(res["gross"], res["pos"] * res["asset_ret"])
+        assert np.allclose(res["net"], res["gross"] - res["cost"])
+
+    def test_close_execution_uses_close_to_close(self):
+        df = make_prices()
+        res = backtest.backtest(df, pd.Series(1.0, index=df.index), BASE_SPEC)
+        expected = df["close"].pct_change().fillna(0.0)
+        assert np.allclose(res["asset_ret"], expected)
+
+    def test_next_open_execution_uses_open_to_open(self):
+        df = make_prices()
+        spec = dict(BASE_SPEC, rules={"execution_price": "next_open"})
+        res = backtest.backtest(df, pd.Series(1.0, index=df.index), spec)
+        expected = (df["open"].shift(-1) / df["open"] - 1).fillna(0.0)
+        assert np.allclose(res["asset_ret"], expected)
+
+    def test_costs_reduce_gross_by_turnover_times_bps(self):
+        df = make_prices()
+        spec = {"signal": {}, "rules": {}, "costs": {"slippage_bps": 100}}
+        w = pd.Series([1.0, 1.0, 0.0, 1.0, 0.0] * 12, index=df.index)
+        res = backtest.backtest(df, w, spec)
+        # per-side cost is 100bps = 1% of turnover
+        expected_cost = res["pos"].diff().abs().fillna(res["pos"].abs()) * 0.01
+        assert np.allclose(res["cost"], expected_cost)
+
+    def test_weights_clipped_to_max_leverage(self):
+        df = make_prices()
+        spec = {"signal": {}, "rules": {"max_leverage": 0.5}, "costs": {}}
+        w = pd.Series(3.0, index=df.index)
+        res = backtest.backtest(df, w, spec)
+        assert res["pos"].max() == 0.5
+
+    def test_missing_dates_filled_with_zero_position(self):
+        df = make_prices()
+        w = pd.Series([1.0], index=[df.index[0]])  # one decision, then gaps
+        res = backtest.backtest(df, w, BASE_SPEC)
+        assert len(res) == len(df)
+        assert res["pos"].iloc[1] == 1.0  # the one decision takes effect next bar
+        assert res["pos"].iloc[2:].eq(0.0).all()
+
+    def test_zero_commission_still_charges_slippage(self):
+        df = make_prices()
+        spec = {"signal": {}, "rules": {}, "costs": {"slippage_bps": 50}}
+        w = pd.Series([0.0, 1.0] * 30, index=df.index)
+        res = backtest.backtest(df, w, spec)
+        assert res["cost"].sum() > 0
+
+
+def make_panel(n=60, seed=0, tickers=("AAA", "BBB")):
+    dfs = {}
+    for i, t in enumerate(tickers):
+        rng = np.random.default_rng(seed + i)
+        close = 100 * np.cumprod(1 + rng.normal(0.001, 0.01, n))
+        open_ = np.roll(close, 1) * 0.99
+        open_[0] = 99.0
+        idx = pd.bdate_range("2020-01-01", periods=n)
+        dfs[t] = pd.DataFrame(
+            {"open": open_, "high": close * 1.01, "low": open_ * 0.99,
+             "close": close, "volume": 1e6}, index=idx)
+    return dfs
+
+
+MULTI_SPEC = {
+    "signal": {"definition": "test", "lag_bars": 1},
+    "rules": {"max_leverage": 1.0},
+    "costs": {"commission_bps": 10, "slippage_bps": 10},
+}
+
+
+class TestBacktestMulti:
+    def test_lag_no_lookahead(self):
+        data = make_panel()
+        w = pd.DataFrame(1.0, index=data["AAA"].index, columns=["AAA", "BBB"])
+        res = backtest.backtest_multi(data, w, MULTI_SPEC)
+        assert res["pos"].iloc[0] == 0.0   # no prior decision on bar 0
+
+    def test_gross_identity(self):
+        data = make_panel()
+        w = pd.DataFrame(0.5, index=data["AAA"].index, columns=["AAA", "BBB"])
+        res = backtest.backtest_multi(data, w, MULTI_SPEC)
+        pos = w.shift(1).fillna(0.0)  # within leverage cap, so pos == shifted w
+        rets = pd.DataFrame({t: d["close"].pct_change().fillna(0.0) for t, d in data.items()})
+        assert np.allclose(res["gross"], (pos * rets).sum(axis=1))
+        assert np.allclose(res["net"], res["gross"] - res["cost"])
+
+    def test_costs_are_per_asset_turnover(self):
+        data = make_panel()
+        w = pd.DataFrame(0.5, index=data["AAA"].index, columns=["AAA", "BBB"])
+        res = backtest.backtest_multi(data, w, MULTI_SPEC)
+        pos = w.shift(1).fillna(0.0)
+        expected = pos.diff().abs().fillna(pos.abs()).sum(axis=1) * 0.002
+        assert np.allclose(res["cost"], expected)
+
+    def test_row_leverage_scaled_down(self):
+        data = make_panel()
+        w = pd.DataFrame(1.0, index=data["AAA"].index, columns=["AAA", "BBB"])
+        res = backtest.backtest_multi(data, w, MULTI_SPEC)  # cap 1.0, raw row total 2.0
+        assert res["pos"].iloc[1] == pytest.approx(1.0)
+
+    def test_next_open_execution(self):
+        data = make_panel()
+        spec = {**MULTI_SPEC, "rules": {"execution_price": "next_open", "max_leverage": 1.0}}
+        w = pd.DataFrame(1.0, index=data["AAA"].index, columns=["AAA", "BBB"])
+        res = backtest.backtest_multi(data, w, spec)
+        rets = pd.DataFrame({t: (d["open"].shift(-1) / d["open"] - 1).fillna(0.0)
+                             for t, d in data.items()})
+        pos = (w * 0.5).shift(1).fillna(0.0)
+        assert np.allclose(res["gross"], (pos * rets).sum(axis=1))
+
+    def test_missing_weight_columns_filled_zero(self):
+        data = make_panel()
+        w = pd.DataFrame({"AAA": 1.0}, index=data["AAA"].index)
+        res = backtest.backtest_multi(data, w, MULTI_SPEC)
+        assert res["pos"].iloc[1] == pytest.approx(1.0)  # BBB column filled 0, AAA scaled 1.0
+
+    def test_carry_costs_not_modeled_exit(self):
+        data = make_panel()
+        spec = {**MULTI_SPEC, "costs": {"commission_bps": 10, "slippage_bps": 10,
+                                        "borrow_bps_annual": 50}}
+        w = pd.DataFrame(0.5, index=data["AAA"].index, columns=["AAA", "BBB"])
+        with pytest.raises(SystemExit, match="carry costs"):
+            backtest.backtest_multi(data, w, spec)
+
+
+class TestLoadPanel:
+    def test_outer_join_ffill_and_master_index(self, tmp_path):
+        a = make_panel(60, 0, ("AAA",))["AAA"]
+        b = make_panel(30, 1, ("BBB",))["BBB"]  # starts 30 bars later
+        b.index = b.index + pd.tseries.offsets.BusinessDay(30)
+        a.to_csv(tmp_path / "AAA.csv")
+        b.to_csv(tmp_path / "BBB.csv")
+        # punch a mid-series hole in AAA's calendar on a date BBB trades, so
+        # the row survives the outer join and only AAA is untraded there
+        a_no_gap = a.drop(index=a.index[35])
+        a_no_gap.to_csv(tmp_path / "AAA.csv")
+        data, master = backtest.load_panel(["AAA", "BBB"], None, None, tmp_path)
+        assert list(data) == ["AAA", "BBB"]
+        assert data["AAA"].index.equals(master)
+        assert data["BBB"].index.equals(master)
+        assert master.equals(a.index)
+        assert data["BBB"]["close"].iloc[:30].isna().all()  # before first quote: NaN
+        assert data["BBB"]["close"].iloc[30:].notna().all()
+        # closes are ffilled across untraded rows; other columns may stay NaN
+        assert data["AAA"]["close"].notna().all()
+        assert pd.isna(data["AAA"]["open"].iloc[35])
+
+
+class TestMetrics:
+    def test_full_output_keys(self):
+        df = make_prices()
+        res = backtest.backtest(df, pd.Series(1.0, index=df.index), BASE_SPEC)
+        m = backtest.metrics(res)
+        for key in ("start", "end", "n_bars", "years", "cagr", "vol",
+                    "sharpe", "max_dd", "t_stat", "exposure", "trades",
+                    "cost_drag_annual"):
+            assert key in m
+        assert m["n_bars"] == len(df)
+        assert m["exposure"] == pytest.approx(1.0, abs=0.02)  # lag leaves bar 0 flat
+        assert m["max_dd"] <= 0
+
+    def test_tiny_input_returns_n_bars_only(self):
+        res = pd.DataFrame({"pos": [1.0], "asset_ret": [0.01], "gross": [0.01],
+                            "cost": [0.0], "net": [0.01]},
+                           index=pd.bdate_range("2020-01-01", periods=1))
+        assert backtest.metrics(res) == {"n_bars": 1}
+
+    def test_trades_counts_position_changes(self):
+        idx = pd.bdate_range("2020-01-01", periods=5)
+        res = pd.DataFrame(
+            {"pos": [0.0, 1.0, 1.0, 0.0, 0.0], "asset_ret": 0.0, "gross": 0.0,
+             "cost": 0.0, "net": 0.0}, index=idx)
+        assert backtest.metrics(res)["trades"] == 2
+
+    def test_gross_sharpe_at_least_net_sharpe(self):
+        df = make_prices()
+        res = backtest.backtest(df, pd.Series(1.0, index=df.index), BASE_SPEC)
+        assert backtest.metrics(res, "gross")["sharpe"] >= backtest.metrics(res)["sharpe"]
+
+
+class TestBuyAndHold:
+    def test_net_is_asset_ret_and_one_trade(self):
+        df = make_prices()
+        res = backtest.backtest(df, pd.Series(0.0, index=df.index), BASE_SPEC)
+        m = backtest.buy_and_hold(res)
+        assert m["trades"] == 1
+        assert m["exposure"] == 1.0
+
+
+class TestDeflatedSharpe:
+    def test_no_haircut_for_single_trial(self):
+        assert backtest.deflated_sharpe(1.5, 1000, 1) == 1.5
+        assert backtest.deflated_sharpe(1.5, 1000, 0) == 1.5
+
+    def test_haircut_grows_with_trials(self):
+        s2 = backtest.deflated_sharpe(1.5, 2520, 2)
+        s10 = backtest.deflated_sharpe(1.5, 2520, 10)
+        assert 1.5 > s2 > s10
+
+    def test_haircut_shrinks_with_more_bars(self):
+        short = backtest.deflated_sharpe(1.5, 252, 10)
+        long = backtest.deflated_sharpe(1.5, 2520, 10)
+        assert long > short
+
+
+class TestRandomEntryNull:
+    def test_degenerate_all_cash_returns_note(self):
+        df = make_prices()
+        res = backtest.backtest(df, pd.Series(0.0, index=df.index), BASE_SPEC)
+        out = backtest.random_entry_null(res, BASE_SPEC, n=50)
+        assert "note" in out
+
+    def test_real_edge_ranks_against_null(self):
+        df = make_prices()
+        res = backtest.backtest(df, pd.Series(1.0, index=df.index), BASE_SPEC)
+        out = backtest.random_entry_null(res, BASE_SPEC, n=100, seed=0)
+        assert out["actual_sharpe"] == out["actual_sharpe"]  # finite
+        assert 0 <= out["percentile"] <= 100
+        assert isinstance(out["beats_null_95"], bool)
+
+    def test_deterministic_given_seed(self):
+        df = make_prices()
+        res = backtest.backtest(df, pd.Series(1.0, index=df.index), BASE_SPEC)
+        a = backtest.random_entry_null(res, BASE_SPEC, n=30, seed=7)
+        b = backtest.random_entry_null(res, BASE_SPEC, n=30, seed=7)
+        assert a == b
+
+
+class TestAutoFlags:
+    def make_out(self, sharpe=1.0, bh_sharpe=0.5, trades=100, oos_sharpe=0.8,
+                 beats_null=True):
+        return {
+            "full": {"sharpe": sharpe, "trades": trades},
+            "benchmark_bh": {"sharpe": bh_sharpe},
+            "out_of_sample": {"sharpe": oos_sharpe},
+            "null_test": {"beats_null_95": beats_null},
+        }
+
+    def test_zero_cost_model_flags(self):
+        spec = {"costs": {"commission_bps": 0, "slippage_bps": 0},
+                "signal": {"lag_bars": 1}, "validation": {}}
+        flags = backtest.auto_flags(spec, self.make_out())
+        assert any("zero cost model" in f for f in flags)
+
+    def test_few_trades_flags(self):
+        spec = {"costs": {"commission_bps": 5}, "signal": {"lag_bars": 1},
+                "validation": {"min_trades": 30}}
+        flags = backtest.auto_flags(spec, self.make_out(trades=3))
+        assert any("trades" in f for f in flags)
+
+    def test_zero_lag_flags_lookahead(self):
+        spec = {"costs": {"commission_bps": 5}, "signal": {"lag_bars": 0},
+                "validation": {}}
+        flags = backtest.auto_flags(spec, self.make_out())
+        assert any("lookahead" in f for f in flags)
+
+    def test_underperforming_bh_flags_weak(self):
+        spec = {"costs": {"commission_bps": 5}, "signal": {"lag_bars": 1},
+                "validation": {}}
+        flags = backtest.auto_flags(spec, self.make_out(sharpe=0.1, bh_sharpe=0.9))
+        assert any("buy-and-hold" in f for f in flags)
+
+    def test_negative_oos_flags_weak(self):
+        spec = {"costs": {"commission_bps": 5}, "signal": {"lag_bars": 1},
+                "validation": {}}
+        flags = backtest.auto_flags(spec, self.make_out(oos_sharpe=-0.4))
+        assert any("since publication" in f for f in flags)
+
+    def test_losing_to_null_flags_weak(self):
+        spec = {"costs": {"commission_bps": 5}, "signal": {"lag_bars": 1},
+                "validation": {}}
+        flags = backtest.auto_flags(spec, self.make_out(beats_null=False))
+        assert any("null" in f for f in flags)
+
+    def test_clean_run_has_no_flags(self):
+        spec = {"costs": {"commission_bps": 5, "slippage_bps": 5},
+                "signal": {"lag_bars": 1}, "validation": {"min_trades": 30},
+                "ambiguities": []}
+        flags = backtest.auto_flags(spec, self.make_out())
+        assert flags == []
+
+    def test_material_ambiguities_listed(self):
+        spec = {"costs": {"commission_bps": 5}, "signal": {"lag_bars": 1},
+                "validation": {},
+                "ambiguities": [{"id": "universe", "material": True}]}
+        flags = backtest.auto_flags(spec, self.make_out())
+        assert any("universe" in f for f in flags)
+
+
+class TestWriteReport:
+    @pytest.fixture
+    def env(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(backtest, "ROOT", tmp_path)
+        spec = {
+            "meta": {
+                "title": "200dma Timing", "source": "A Blog",
+                "url": "https://a.com/x", "posted": "2010-01-01",
+                "claim": "Timing the 200dma beats buy and hold.",
+                "author_evidence": {
+                    "headline_metrics": "Sharpe 1.1", "sample": "1990-2010",
+                    "costs_included": False,
+                },
+            },
+            "verdict": {"status": "supported", "reason": "beats null"},
+            "ambiguities": [{"id": "u1", "material": False,
+                             "question": "which index?", "default": "SPY",
+                             "alternatives": ["QQQ"]}],
+        }
+        df = make_prices()
+        res = backtest.backtest(df, pd.Series(1.0, index=df.index), BASE_SPEC)
+        out = {
+            "slug": "200dma-timing",
+            "full": backtest.metrics(res),
+            "gross": backtest.metrics(res, "gross"),
+            "benchmark_bh": backtest.buy_and_hold(res),
+            "in_sample": {}, "out_of_sample": {},
+            "cost_sweep": {"0bps": 1.2, "50bps": 1.0},
+            "param_sweep": {"lookback": {"100": 0.9, "200": 1.0}},
+            "null_test": backtest.random_entry_null(res, BASE_SPEC, n=20),
+            "deflated_sharpe": 0.9,
+            "auto_flags": ["WEAK: does not beat buy-and-hold after costs"],
+        }
+        return tmp_path, spec, out
+
+    def test_report_written_and_contains_sections(self, env):
+        tmp_path, spec, out = env
+        spec_path = tmp_path / "spec.yaml"
+        spec_path.write_text(yaml.safe_dump(spec))
+        path = backtest.write_report(spec_path, out)
+        assert path.exists()
+        assert path == tmp_path / "reports" / "200dma-timing.md"
+        text = path.read_text()
+        for expected in ("# 200dma Timing", "**supported**", "## Verdict",
+                         "## Headline", "beats null", "Cost sensitivity",
+                         "Random-entry null", "## Automated flags"):
+            assert expected in text
+
+    def test_report_includes_cost_sweep_values(self, env):
+        tmp_path, spec, out = env
+        spec_path = tmp_path / "spec.yaml"
+        spec_path.write_text(yaml.safe_dump(spec))
+        text = backtest.write_report(spec_path, out).read_text()
+        assert "0bps" in text and "50bps" in text
+
+
+class TestEndToEndRun:
+    def test_run_on_cached_prices_and_local_strategy(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(backtest, "ROOT", tmp_path)
+
+        (tmp_path / "data" / "prices").mkdir(parents=True)
+        df = make_prices(80)
+        df.to_csv(tmp_path / "data" / "prices" / "SPY_TEST.csv")
+
+        strategies = tmp_path / "strategies"
+        strategies.mkdir()
+        (strategies / "always-in.py").write_text(
+            "import pandas as pd\n"
+            "def signal(df, **params):\n"
+            "    return pd.Series(1.0, index=df.index)\n"
+        )
+
+        spec = {
+            "meta": {
+                "slug": "always-in", "title": "Always In",
+                "source": "test", "url": "https://a.com", "posted": "2020-03-02",
+                "claim": "always long",
+                "author_evidence": {"headline_metrics": "n/a", "sample": "n/a",
+                                    "costs_included": False},
+            },
+            "data": {"universe": ["SPY_TEST"], "start": "2020-01-01"},
+            "signal": {"definition": "always long", "lag_bars": 1},
+            "rules": {"max_leverage": 1.0},
+            "costs": {"commission_bps": 5, "slippage_bps": 5},
+            "validation": {
+                "cost_sweep_bps": [0, 50],
+                "param_sweep": None,
+                "multiple_testing": {"n_tested_so_far": 3},
+                "min_trades": 1,
+            },
+            "verdict": {"status": "unknown", "reason": None},
+            "ambiguities": [],
+        }
+        spec_path = tmp_path / "spec.yaml"
+        spec_path.write_text(yaml.safe_dump(spec))
+
+        out = backtest.run(spec_path, n_trials=3)
+        assert out["slug"] == "always-in"
+        assert out["full"]["n_bars"] == 80
+        assert set(out["cost_sweep"]) == {"0bps", "50bps"}
+        assert out["deflated_sharpe"] < out["full"]["sharpe"]
+        assert isinstance(out["auto_flags"], list)
+
+        # in-sample / out-of-sample split honours the posted date
+        assert out["in_sample"]["n_bars"] + out["out_of_sample"]["n_bars"] == 80
+
+
+class TestMultiUniverseRun:
+    def make_env(self, tmp_path, monkeypatch, signal_body):
+        """Two cached tickers + a strategy module + a full valid spec."""
+        monkeypatch.setattr(backtest, "ROOT", tmp_path)
+
+        prices = tmp_path / "data" / "prices"
+        prices.mkdir(parents=True)
+        for t, df in make_panel(60).items():
+            df.to_csv(prices / f"{t}.csv")
+
+        strategies = tmp_path / "strategies"
+        strategies.mkdir()
+        (strategies / "multi-ser.py").write_text(
+            "import pandas as pd\n"
+            "def signal(data, **params):\n"
+            "    idx = next(iter(data.values())).index\n"
+            f"{signal_body}"
+        )
+
+        spec = {
+            "meta": {
+                "slug": "multi-ser", "title": "Multi Test",
+                "source": "test", "url": "https://a.com", "posted": "2020-03-02",
+                "claim": "equal weight two assets",
+                "author_evidence": {"headline_metrics": "n/a", "sample": "n/a",
+                                    "costs_included": False},
+            },
+            "data": {"universe": ["AAA", "BBB"], "start": "2020-01-01"},
+            "signal": {"definition": "equal weight", "lag_bars": 1},
+            "rules": {"max_leverage": 1.0},
+            "costs": {"commission_bps": 5, "slippage_bps": 5},
+            "validation": {
+                "cost_sweep_bps": [0, 50],
+                "param_sweep": None,
+                "multiple_testing": {"n_tested_so_far": 3},
+                "min_trades": 1,
+            },
+            "verdict": {"status": "unknown", "reason": None},
+            "ambiguities": [],
+        }
+        spec_path = tmp_path / "spec.yaml"
+        spec_path.write_text(yaml.safe_dump(spec))
+        return spec_path
+
+    def test_multi_universe_requires_dataframe_weights(self, tmp_path, monkeypatch):
+        sp = self.make_env(
+            tmp_path, monkeypatch,
+            "    return pd.Series(1.0, index=idx)\n")
+        with pytest.raises(SystemExit, match="weights DataFrame"):
+            backtest.run(sp, n_trials=1)
+
+    def test_multi_universe_end_to_end(self, tmp_path, monkeypatch):
+        sp = self.make_env(
+            tmp_path, monkeypatch,
+            "    return pd.DataFrame(1.0 / len(data), index=idx, columns=list(data))\n")
+        out = backtest.run(sp, n_trials=1)
+        assert out["full"]["n_bars"] == 60
+        assert "benchmark_bh" in out
+        assert out["benchmark_bh"]["n_bars"] == 60
+        assert set(out["cost_sweep"]) == {"0bps", "50bps"}
+        assert isinstance(out["auto_flags"], list)
+        assert out["in_sample"]["n_bars"] + out["out_of_sample"]["n_bars"] == 60
+
+
+class TestLoadStrategy:
+    def test_missing_module_exits(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(backtest, "ROOT", tmp_path)
+        with pytest.raises(SystemExit, match="missing implementation"):
+            backtest.load_strategy("nope")
+
+    def test_module_without_signal_exits(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(backtest, "ROOT", tmp_path)
+        strategies = tmp_path / "strategies"
+        strategies.mkdir()
+        (strategies / "empty.py").write_text("x = 1\n")
+        with pytest.raises(SystemExit, match="no signal"):
+            backtest.load_strategy("empty")
+
+    def test_valid_module_returns_namespace_with_signal(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(backtest, "ROOT", tmp_path)
+        strategies = tmp_path / "strategies"
+        strategies.mkdir()
+        (strategies / "ok.py").write_text("def signal(df, **p):\n    return df.close\n")
+        mod = backtest.load_strategy("ok")
+        assert callable(mod.signal)
+
+
+class TestAppendLeaderboard:
+    def make_spec_and_out(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(backtest, "ROOT", tmp_path)
+        spec = {"verdict": {"status": "WEAKER", "reason": "r"}}
+        df = make_prices()
+        res = backtest.backtest(df, pd.Series(1.0, index=df.index), BASE_SPEC)
+        out = {
+            "slug": "always-in",
+            "full": backtest.metrics(res),
+            "null_test": {"beats_null_95": True},
+            "deflated_sharpe": 0.9,
+            "auto_flags": ["WEAK: does not beat buy-and-hold after costs"],
+        }
+        return spec, out
+
+    def test_appends_one_json_row(self, tmp_path, monkeypatch):
+        spec, out = self.make_spec_and_out(tmp_path, monkeypatch)
+        path = tmp_path / "results" / "leaderboard.jsonl"
+        backtest.append_leaderboard(spec, out, path)
+        rows = backtest.json.loads(path.read_text().splitlines()[0])
+        assert rows["slug"] == "always-in"
+        assert rows["verdict"] == "WEAKER"
+        assert rows["net_sharpe"] == out["full"]["sharpe"]
+        assert rows["deflated_sharpe"] == 0.9
+        assert rows["beats_null_95"] is True
+        assert rows["flags"] == out["auto_flags"]
+        assert "run_at" in rows
+
+    def test_appends_not_overwrites(self, tmp_path, monkeypatch):
+        spec, out = self.make_spec_and_out(tmp_path, monkeypatch)
+        path = tmp_path / "results" / "leaderboard.jsonl"
+        backtest.append_leaderboard(spec, out, path)
+        backtest.append_leaderboard(spec, out, path)
+        assert len(path.read_text().splitlines()) == 2
+
+    def test_creates_results_dir(self, tmp_path, monkeypatch):
+        spec, out = self.make_spec_and_out(tmp_path, monkeypatch)
+        path = backtest.append_leaderboard(spec, out, tmp_path / "results" / "leaderboard.jsonl")
+        assert path.exists()
+
+    def test_missing_verdict_recorded_as_unknown(self, tmp_path, monkeypatch):
+        """A spec without a verdict must still leave its leaderboard row --
+        the expensive backtest already ran by the time this would crash."""
+        spec, out = self.make_spec_and_out(tmp_path, monkeypatch)
+        spec.pop("verdict")
+        path = tmp_path / "results" / "leaderboard.jsonl"
+        backtest.append_leaderboard(spec, out, path)
+        row = backtest.json.loads(path.read_text().splitlines()[0])
+        assert row["verdict"] == "unknown"
+
+
+class TestCatalogUniverse:
+    def test_load_prices_dispatches_prefixed_ids_to_catalog(self, tmp_path, monkeypatch):
+        seen = {}
+
+        def fake_load(series_id, start, end):
+            seen["id"], seen["start"], seen["end"] = series_id, start, end
+            idx = pd.DatetimeIndex(["2024-01-02", "2024-01-03"])
+            return pd.DataFrame({"close": [100.0, 101.0]}, index=idx)
+
+        monkeypatch.setattr(backtest.catalog, "load", fake_load)
+
+        df = backtest.load_prices("fred:DGS10", "2024-01-01", None,
+                                  tmp_path / "cache")
+
+        assert seen == {"id": "fred:DGS10", "start": "2024-01-01", "end": None}
+        assert list(df.columns) == ["close"]
+
+    def test_bare_ticker_still_uses_yfinance_path(self, tmp_path, monkeypatch):
+        # a cached data/prices CSV short-circuits before any network
+        cache = tmp_path / "SPY.csv"
+        cache.write_text(",close\n2024-01-02,100.0\n")
+
+        df = backtest.load_prices("SPY", None, None, tmp_path)
+
+        assert len(df) == 1  # legacy path untouched
+
+
+class TestCatalogFrequencyFlags:
+    def test_monthly_series_adds_warning_flag(self):
+        import copy
+
+        import catalog
+        spec = copy.deepcopy(BASE_SPEC)
+        spec["data"] = {"universe": ["SPY", "fred:CPIAUCSL"], "bar": "1d"}
+        flags = catalog.frequency_flags(spec["data"]["universe"],
+                                        spec["data"].get("bar"))
+        assert any("fred:CPIAUCSL" in f for f in flags)
+
+
+class TestOHLCVContract:
+    def test_close_only_flag_detection(self):
+        import catalog
+        assert catalog.is_close_only("fred:DGS10")
+        assert not catalog.is_close_only("yahoo:SPY")
+        assert not catalog.is_close_only("SPY")
+
+    def test_next_open_on_close_only_series_fails_cleanly(self, tmp_path, monkeypatch):
+        import catalog
+        spec = {
+            "meta": {"slug": "t", "title": "t", "posted": "2021-01-01"},
+            "signal": {"definition": "test", "lag_bars": 1},
+            "rules": {"execution_price": "next_open"},
+            "costs": {"commission_bps": 10, "slippage_bps": 10},
+            "validation": {},
+            "data": {"universe": ["fred:DGS10"], "start": "2020-01-01"},
+        }
+        idx = pd.bdate_range("2020-01-01", periods=60)
+        close = pd.DataFrame({"close": np.linspace(100, 110, 60)}, index=idx)
+        monkeypatch.setattr(backtest.catalog, "load", lambda *a, **k: close.copy())
+        fake_mod = type("M", (), {"signal": staticmethod(
+            lambda df, **k: pd.Series(1.0, index=df.index))})
+        monkeypatch.setattr(backtest, "load_strategy", lambda slug: fake_mod)
+
+        with pytest.raises(SystemExit, match="no open column"):
+            backtest.run_spec(spec, None)
+
+    def test_catalog_failure_exits_cleanly(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(backtest.catalog, "load",
+                            lambda *a, **k: (_ for _ in ()).throw(
+                                ValueError("fred:NOPE_NOPE not in catalog")))
+
+        with pytest.raises(SystemExit, match="not in catalog"):
+            backtest.load_prices("fred:NOPE_NOPE", None, None, tmp_path)

@@ -1,0 +1,113 @@
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { ArrowUpRight, Menu, Moon, Palette, Sun, X } from "lucide-react";
+import { useTheme, THEMES, THEME_ORDER, type Theme } from "../lib/theme";
+
+const next = (t: Theme) =>
+  THEME_ORDER[(THEME_ORDER.indexOf(t) + 1) % THEME_ORDER.length];
+
+const LINKS: [string, string][] = [
+  ["Product", "#product"],
+  ["Pipeline", "#pipeline"],
+  ["Experiments", "#experiments"],
+  ["Documentation", "https://github.com/uberdeveloper/autoquant#readme"],
+];
+
+export default function Nav() {
+  const [scrolled, setScrolled] = useState(false);
+  const [open, setOpen] = useState(false);
+  const { theme, setMode, cycleTheme } = useTheme();
+  const mode = THEMES[theme].mode;
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 24);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  return (
+    <header
+      className={`fixed inset-x-0 top-0 z-50 border-b transition-colors ${
+        scrolled ? "border-line bg-bg/85 backdrop-blur" : "border-transparent"
+      }`}
+    >
+      <nav
+        className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4"
+        aria-label="Main"
+      >
+        <Link to="/" className="font-mono text-sm font-medium tracking-[0.3em]">
+          AUTOQUANT
+        </Link>
+        <div className="hidden items-center gap-8 md:flex">
+          {LINKS.map(([label, href]) => (
+            <a
+              key={label}
+              href={href}
+              className="text-sm text-dim transition-colors hover:text-ink"
+            >
+              {label}
+            </a>
+          ))}
+          <button
+            onClick={() => setMode(mode === "dark" ? "light" : "dark")}
+            aria-label={`Switch to ${mode === "dark" ? "light" : "dark"} mode`}
+            title={`mode: ${mode} — like your phone's dark mode`}
+            className="text-dim transition-colors hover:text-ink"
+          >
+            {mode === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          </button>
+          <button
+            onClick={cycleTheme}
+            aria-label={`Cycle skin (current: ${theme})`}
+            title={`skin: ${theme} → next: ${next(theme)}`}
+            className="flex items-center gap-2 text-dim transition-colors hover:text-ink"
+          >
+            <Palette className="h-4 w-4" />
+            <span className="font-mono text-[11px] uppercase tracking-widest">{theme}</span>
+          </button>
+          <Link
+            to="/workspace"
+            className="border border-line px-4 py-2 font-mono text-xs tracking-widest text-accent transition-colors hover:border-accent"
+          >
+            OPEN WORKSPACE <ArrowUpRight className="ml-1 inline h-3 w-3" />
+          </Link>
+        </div>
+        <div className="flex items-center gap-4 md:hidden">
+          <button
+            onClick={() => setMode(mode === "dark" ? "light" : "dark")}
+            aria-label={`Switch to ${mode === "dark" ? "light" : "dark"} mode`}
+            className="text-dim"
+          >
+            {mode === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          </button>
+          <button onClick={cycleTheme} aria-label={`Cycle skin (current: ${theme})`} className="text-dim">
+            <Palette className="h-4 w-4" />
+          </button>
+          <button aria-label="Menu" onClick={() => setOpen(!open)}>
+            {open ? <X /> : <Menu />}
+          </button>
+        </div>
+      </nav>
+      {open && (
+        <div className="border-t border-line bg-bg px-6 py-8 md:hidden">
+          {LINKS.map(([label, href]) => (
+            <a
+              key={label}
+              href={href}
+              onClick={() => setOpen(false)}
+              className="block py-3 text-2xl text-ink"
+            >
+              {label}
+            </a>
+          ))}
+          <Link
+            to="/workspace"
+            onClick={() => setOpen(false)}
+            className="mt-4 block font-mono text-sm text-accent"
+          >
+            OPEN WORKSPACE →
+          </Link>
+        </div>
+      )}
+    </header>
+  );
+}

@@ -1,0 +1,219 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #0b0c0d;
+  --color-surface: #131516;
+  --color-ink: #f3f1ea;
+  --color-dim: #969a97;
+  --color-accent: #c5f467;
+  --color-fail: #e5785c;
+  --color-line: rgba(243, 241, 234, 0.13);
+  --font-display: "Space Grotesk", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+/* Light "paper" theme — redeclares the same custom properties; every
+   component reads tokens, so nothing else changes. Accent steps down the
+   lime family (#C5F467 is 1.13:1 on paper; #3F6212 is 6.3:1). Values and
+   ratios: docs/superpowers/specs/2026-10-22-themes-design.md */
+html[data-theme="light"] {
+  --color-bg: #f4f2ea;
+  --color-surface: #fcfbf7;
+  --color-ink: #16181a;
+  --color-dim: #5a5f5c;
+  --color-accent: #3f6212;
+  --color-fail: #b3401f;
+  --color-line: rgba(22, 24, 26, 0.15);
+  color-scheme: light;
+}
+
+/* Terminal — phosphor green on blue-black (accent 15.1:1, ink 15.2:1) */
+html[data-theme="terminal"] {
+  --color-bg: #060a12;
+  --color-surface: #0c1322;
+  --color-ink: #d8e2f0;
+  --color-dim: #6b7a94;
+  --color-accent: #3dffa2;
+  --color-fail: #ff6d5e;
+  --color-line: rgba(216, 226, 240, 0.14);
+  color-scheme: dark;
+}
+
+/* Amber — classic finance terminal (accent 10.7:1, ink 16.9:1) */
+html[data-theme="amber"] {
+  --color-bg: #0d0b07;
+  --color-surface: #17130c;
+  --color-ink: #f2ede4;
+  --color-dim: #9a917f;
+  --color-accent: #ffb000;
+  --color-fail: #ff7a5c;
+  --color-line: rgba(242, 237, 228, 0.14);
+  color-scheme: dark;
+}
+
+html:not([data-theme="light"]) { color-scheme: dark; }
+
+/* Ivory — serif print-journal: Playfair display, hairline warm rules.
+   (accent 7.9:1, ink 16.0:1, dim 5.0:1 on #F7F2E7) */
+html[data-theme="ivory"] {
+  --color-bg: #f7f2e7;
+  --color-surface: #fdfaf2;
+  --color-ink: #1a1712;
+  --color-dim: #6e675b;
+  --color-accent: #2f5233;
+  --color-fail: #a03b2a;
+  --color-line: rgba(26, 23, 18, 0.18);
+  --font-display: "Playfair Display", Georgia, serif;
+  color-scheme: light;
+}
+html[data-theme="ivory"] h1,
+html[data-theme="ivory"] h2,
+html[data-theme="ivory"] h3 {
+  font-family: "Playfair Display", Georgia, serif;
+  letter-spacing: -0.01em;
+}
+
+/* Noir — neon synthwave: magenta/cyan on purple-black, glow signature.
+   (accent 6.5:1, ink 16.8:1, dim 5.6:1 on #0A0612) */
+html[data-theme="noir"] {
+  --color-bg: #0a0612;
+  --color-surface: #150c24;
+  --color-ink: #f0e8f5;
+  --color-dim: #8e82a3;
+  --color-accent: #ff3dcf;
+  --color-fail: #ff6d5e;
+  --color-line: rgba(240, 232, 245, 0.16);
+  color-scheme: dark;
+}
+html[data-theme="noir"] .text-accent {
+  text-shadow: 0 0 14px rgba(255, 61, 207, 0.5);
+}
+html[data-theme="noir"] .bg-accent {
+  box-shadow: 0 0 24px rgba(255, 61, 207, 0.45);
+}
+html[data-theme="noir"] section h1 {
+  background: linear-gradient(92deg, #ff3dcf 20%, #4de3ff 80%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Brutal — mono brutalism: pure black/white, acid blocks, hard shadows.
+   (ink 21:1, dim 9.7:1; accent is a block color — black text on acid) */
+html[data-theme="brutal"] {
+  --color-bg: #ffffff;
+  --color-surface: #f2f2f2;
+  --color-ink: #000000;
+  --color-dim: #444444;
+  --color-accent: #ffe800;
+  --color-fail: #d42222;
+  --color-line: #000000;
+  --font-display: "JetBrains Mono", ui-monospace, monospace;
+  color-scheme: light;
+}
+html[data-theme="brutal"] .border-line { border-width: 2px; }
+/* acid yellow as text on white is unreadable; #6B6000 is 6.4:1 — covers
+   text-accent and its opacity variants (text-accent/80 etc.) */
+html[data-theme="brutal"] [class*="text-accent"] { color: #6b6000; }
+html[data-theme="brutal"] .bg-accent {
+  box-shadow: 4px 4px 0 var(--color-ink);
+  color: #000000;
+}
+html[data-theme="brutal"] h1,
+html[data-theme="brutal"] h2 {
+  text-transform: uppercase;
+  letter-spacing: -0.02em;
+}
+
+/* Colorblind dark — azure/orange axis (safe under deutan & protan:
+   accent/fail dE 27.6/22.8). accent 9.6:1, ink 16.0:1, dim 6.3:1 */
+html[data-theme="cb-dark"] {
+  --color-bg: #0b0d10;
+  --color-surface: #131720;
+  --color-ink: #e6e9ee;
+  --color-dim: #8a93a3;
+  --color-accent: #4fc1ff;
+  --color-fail: #ffb454;
+  --color-line: rgba(230, 233, 238, 0.15);
+  color-scheme: dark;
+}
+
+/* Colorblind light — same azure/orange axis (dE 30.2/25.4).
+   accent 5.9:1, ink 17.4:1, dim 6.8:1 */
+html[data-theme="cb-light"] {
+  --color-bg: #f6f7f9;
+  --color-surface: #ffffff;
+  --color-ink: #101319;
+  --color-dim: #4f5765;
+  --color-accent: #0a5fb8;
+  --color-fail: #c4551b;
+  --color-line: rgba(16, 19, 25, 0.15);
+  color-scheme: light;
+}
+
+/* Zenburn — the classic muted desert editor theme (accent 5.6:1,
+   ink 7.6:1, dim 4.8:1). accent/fail dE 7.0 deutan — floor band, legal
+   with our always-labeled status dots. */
+html[data-theme="zenburn"] {
+  --color-bg: #3f3f3f;
+  --color-surface: #4a4a4a;
+  --color-ink: #dcdccc;
+  --color-dim: #b0b0a6;
+  --color-accent: #a9c4a9;
+  --color-fail: #d7a375;
+  --color-line: rgba(220, 220, 204, 0.18);
+  color-scheme: dark;
+}
+
+/* Matrix — phosphor monochrome; fail is white (dE 20.8/19.8 vs green,
+   monochrome aesthetic preserved). accent 14.5:1, ink 17.6:1, dim 8.8:1 */
+html[data-theme="matrix"] {
+  --color-bg: #010d01;
+  --color-surface: #061708;
+  --color-ink: #c8ffc8;
+  --color-dim: #6fbe6f;
+  --color-accent: #00ff41;
+  --color-fail: #f0fff0;
+  --color-line: rgba(200, 255, 200, 0.2);
+  color-scheme: dark;
+}
+
+html {
+  background: var(--color-bg);
+  color: var(--color-ink);
+  scroll-behavior: smooth;
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .reveal, .reveal * { transition: none !important; animation: none !important; opacity: 1 !important; transform: none !important; }
+}
+
+body {
+  font-family: var(--font-display);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* thin grid-line motif for large sections */
+.gridlines {
+  background-image: linear-gradient(var(--color-line) 1px, transparent 1px);
+  background-size: 100% 96px;
+  opacity: 0.35;
+}
+
+/* scroll reveal */
+.reveal { opacity: 0; transform: translateY(24px); transition: opacity 0.7s ease, transform 0.7s ease; }
+.reveal.in { opacity: 1; transform: none; }
+
+:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+
+/* hero illustration */
+@keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.prose-fade { animation: fadeUp 1.2s ease both; }
+.yaml-line { opacity: 0; animation: fadeUp 0.5s ease both; }
+@keyframes draw { from { stroke-dashoffset: 600; } to { stroke-dashoffset: 0; } }
+.curve-draw { stroke-dasharray: 600; opacity: 0; animation: draw 1.6s ease forwards, fadeUp 0.3s ease forwards; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+.curve-readout { opacity: 0; animation: fadeIn 0.6s ease both; }
+@media (prefers-reduced-motion: reduce) {
+  .yaml-line, .curve-draw, .curve-readout, .prose-fade { animation: none; opacity: 1; stroke-dashoffset: 0; }
+}

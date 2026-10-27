@@ -9,7 +9,9 @@ const fmt = (n: number | null) =>
 
 export default function Archive({ rows: rowsProp }: { rows?: ArchiveRow[] }) {
   const [sort, setSort] = useState<SortKey>("date");
-  const rows = [...(rowsProp ?? snapshot.archive)].sort((a, b) =>
+  const rows = (rowsProp ?? snapshot.archive)
+    .map((row, index) => ({ ...row, rowKey: `${row.lane}-${row.slug}-${row.runAt ?? row.date}-${index}` }))
+    .sort((a, b) =>
     sort === "date"
       ? (Date.parse(b.runAt || b.date) || 0) - (Date.parse(a.runAt || a.date) || 0)
       : (b.netSharpe ?? -99) - (a.netSharpe ?? -99),
@@ -45,8 +47,8 @@ export default function Archive({ rows: rowsProp }: { rows?: ArchiveRow[] }) {
         </Reveal>
       ) : (
         <ol className="mt-16 border-t border-line">
-          {rows.map((r, index) => (
-            <Reveal key={`${r.lane}-${r.slug}-${r.runAt ?? r.date}-${index}`}>
+          {rows.map((r) => (
+            <Reveal key={r.rowKey}>
               <li className="grid grid-cols-[auto_1fr_auto] items-center gap-6 border-b border-line py-5 transition-colors hover:bg-surface/60">
                 <StatusDot verdict={r.status} />
                 <div className="min-w-0">

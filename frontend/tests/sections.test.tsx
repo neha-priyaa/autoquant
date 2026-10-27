@@ -5,6 +5,7 @@ import { StatusDot } from "../src/components/StatusDot";
 import { MetricReadout } from "../src/components/MetricReadout";
 import Evidence from "../src/sections/Evidence";
 import Archive from "../src/sections/Archive";
+import { useRevealRoot } from "../src/lib/reveal";
 import InMotion from "../src/sections/InMotion";
 import type { ArchiveRow, Chain, Headline } from "../src/content/snapshot";
 
@@ -51,6 +52,18 @@ const HEADLINE: Headline = {
 };
 
 describe("Archive", () => {
+  it("keeps reordered rows revealed", async () => {
+    function Landing() {
+      const ref = useRevealRoot();
+      return <main ref={ref}><Archive rows={ROWS} /></main>;
+    }
+    render(<Landing />);
+    expect(screen.getByText("s1").closest(".reveal")).toHaveClass("in");
+    await userEvent.selectOptions(screen.getByRole("combobox"), "sharpe");
+    expect(screen.getByText("s1").closest(".reveal")).toHaveClass("in");
+    expect(screen.getByText("s2").closest(".reveal")).toHaveClass("in");
+  });
+
   it("orders runs on the same date by full timestamp", () => {
     render(<MemoryRouter><Archive rows={[
       { ...ROWS[0], runAt: "2026-02-01T09:00:00Z" },

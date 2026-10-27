@@ -288,3 +288,12 @@ class TestReviewRegressions:
         snap = load_module().build_snapshot(tmp_path)
         assert snap["workspace"]["runs"][0]["runAt"] == timestamp
         assert snap["archive"][0]["runAt"] == timestamp
+
+
+def test_spec_summary_preserves_complete_yaml(tmp_path):
+    source = "meta:\n  slug: complete\n  claim: " + "long claim " * 600 + "\n"
+    path = tmp_path / "complete.yaml"
+    path.write_text(source)
+    result = load_module()._spec_summary(path, False)
+    assert result["raw"] == source
+    assert result["rawTruncated"] is False

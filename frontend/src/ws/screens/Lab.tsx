@@ -28,6 +28,8 @@ export function SpecDetail({ slug }: { slug: string }) {
     ? "(generated code available in strategies/ — snapshot carries specs only)"
     : null;
   if (!spec) return <p className="mt-10 text-dim">Spec not found: {slug}</p>;
+  // Older snapshots used an ellipsis as the truncation marker.
+  const rawTruncated = spec.rawTruncated ?? spec.raw.trimEnd().endsWith("…");
   const run = workspace.runs.find((r) => r.slug === slug && r.lane === "article");
   return (
     <div>
@@ -59,7 +61,11 @@ export function SpecDetail({ slug }: { slug: string }) {
             view latest backtest report →
           </Link>
         )}
-        <CopyButton text={spec.raw} label="spec YAML" />
+        {rawTruncated ? (
+          <p className="font-mono text-xs text-dim">
+            Specification preview is truncated. Use the full YAML from the repository.
+          </p>
+        ) : <CopyButton text={spec.raw} label="spec YAML" />}
       </div>
 
       <details className="mt-6 border border-line">

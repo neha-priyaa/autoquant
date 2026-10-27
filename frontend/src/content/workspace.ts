@@ -4,7 +4,7 @@ import { snapshot } from "./snapshot";
 
 export interface Article { slug: string | null; title: string | null; source: string | null; url: string | null; posted: string | null; stage: string | null; blurb: string; triageScore: number | null; }
 export interface TriageRow { slug: string | null; title: string | null; url: string | null; claim: string; assetClass: string | null; score: number | null; redFlags: string[]; missing: string[]; reason: string; }
-export interface SpecSummary { slug: string; title: string | null; claim: string | null; universe: string[]; bar: string | null; signal: string | null; entry: string | null; exit: string | null; direction: string | null; status: string | null; hasCode: boolean; raw: string; }
+export interface SpecSummary { slug: string; title: string | null; claim: string | null; universe: string[]; bar: string | null; signal: string | null; entry: string | null; exit: string | null; direction: string | null; status: string | null; hasCode: boolean; raw: string; rawTruncated?: boolean; }
 export interface RunRow { slug: string | null; lane: "article" | "external"; status: string | null; netSharpe: number | null; beatsNull: boolean | null; date: string; runAt?: string; repo?: string; artifactPath?: string; artifactKey?: string; flags: string[]; error: string | null; }
 export interface Report { metrics: { label: string; strategy: string; benchmark: string }[]; text: string; }
 export interface FailedRow { slug: string; error: string; }

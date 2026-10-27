@@ -141,9 +141,10 @@ def _archive_row_external(row: dict) -> dict | None:
 
 
 def _spec_summary(path: Path, has_code: bool) -> dict | None:
-    """Structured fields + truncated raw YAML for the Strategy Lab."""
+    """Structured fields and complete raw YAML for the Strategy Lab."""
     try:
-        spec = yaml.safe_load(path.read_text(errors="ignore")) or {}
+        raw = path.read_text(errors="ignore")
+        spec = yaml.safe_load(raw) or {}
     except yaml.YAMLError:
         return None
     meta = spec.get("meta") or {}
@@ -168,7 +169,8 @@ def _spec_summary(path: Path, has_code: bool) -> dict | None:
         "direction": rules.get("direction"),
         "status": verdict.get("status"),
         "hasCode": has_code,
-        "raw": truncate(path.read_text(errors="ignore"), 4000),
+        "raw": raw,
+        "rawTruncated": False,
     }
 
 

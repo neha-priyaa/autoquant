@@ -201,3 +201,23 @@ class TestMain:
         monkeypatch.setattr(backtest_batch, "FAILED", tmp_path / "results" / "failed.jsonl")
         assert backtest_batch.main_with([]) == 0
         assert "nothing to backtest" in capsys.readouterr().out
+
+
+class TestRecordFailureDedupe:
+    def test_same_spec_replaces_prior_row(self, tmp_path):
+        path = tmp_path / "results" / "failed.jsonl"
+        backtest_batch.record_failure({"spec": "s.yaml", "error": "boom"}, path)
+        backtest_batch.record_failure({"spec": "t.yaml", "error": "bang"}, path)
+        backtest_batch.record_failure({"spec": "s.yaml", "error": "fixed-ish"}, path)
+        rows = [json.loads(line) for line in path.read_text().splitlines()]
+        assert [r["spec"] for r in rows] == ["t.yaml", "s.yaml"]
+        assert rows[-1]["error"] == "fixed-ish"
+
+    def test_torn_lines_survive_dedupe_rewrite(self, tmp_path):
+        path = tmp_path / "results" / "failed.jsonl"
+        path.parent.mkdir(parents=True)
+        path.write_text('{"spec": "s.yaml", "error": "old"}\nnot json\n')
+        backtest_batch.record_failure({"spec": "s.yaml", "error": "new"}, path)
+        rows = [json.loads(line) for line in path.read_text().splitlines()
+                if line.strip().startswith("{")]
+        assert len(rows) == 1 and rows[0]["error"] == "new"

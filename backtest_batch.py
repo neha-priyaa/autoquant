@@ -88,8 +88,23 @@ def already_run(leaderboard: Path) -> set[str]:
 
 
 def record_failure(result: dict, path: Path) -> None:
+    """Record one spec failure, replacing any prior entry for the same spec
+    (issue #34: unbounded growth — retries kept every attempt forever).
+    Torn lines are dropped by the rewrite, which doubles as self-healing."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a") as fh:
+    spec = result.get("spec")
+    prior: list[str] = []
+    if path.exists():
+        for line in path.read_text().splitlines():
+            try:
+                if json.loads(line).get("spec") == spec:
+                    continue
+            except json.JSONDecodeError:
+                pass
+            prior.append(line)
+    with path.open("w") as fh:
+        for line in prior:
+            fh.write(line + "\n")
         fh.write(json.dumps(result) + "\n")
 
 

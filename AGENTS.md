@@ -67,6 +67,22 @@
 - Before a commit, run the relevant test suite and do not commit with known
   failing tests unless the user explicitly directs otherwise.
 
+## Frontend structure and simplicity
+
+- Keep frontend code compact, readable, and modular, following the same
+  responsibility-focused approach as the Python code.
+- Give modules clear responsibilities and keep feature-specific code together.
+  Keep helpers private to a feature until multiple callers need them.
+- Prefer straightforward components and local state. Introduce shared
+  components, custom hooks, dependencies, or abstraction layers only when they
+  solve a concrete current need.
+- Keep data loading and validation in the content modules, separate from
+  screen rendering and interaction logic.
+- Mirror the source structure in tests so each module's behavior is easy to
+  locate and verify.
+- Avoid speculative flexibility, unnecessary indirection, and unnecessary
+  file splitting. Remove unused compatibility code when it has no consumers.
+
 ## Frontend testing
 
 - For each bug fix, first add a focused regression test that fails for the

@@ -11,11 +11,14 @@ export default function Archive({ rows: rowsProp }: { rows?: ArchiveRow[] }) {
   const [sort, setSort] = useState<SortKey>("date");
   const rows = (rowsProp ?? snapshot.archive)
     .map((row, index) => ({ ...row, rowKey: `${row.lane}-${row.slug}-${row.runAt ?? row.date}-${index}` }))
-    .sort((a, b) =>
-    sort === "date"
-      ? (Date.parse(b.runAt || b.date) || 0) - (Date.parse(a.runAt || a.date) || 0)
-      : (b.netSharpe ?? -99) - (a.netSharpe ?? -99),
-  );
+    .sort((a, b) => {
+      if (sort === "date") {
+        return (Date.parse(b.runAt || b.date) || 0) - (Date.parse(a.runAt || a.date) || 0);
+      }
+      if (a.netSharpe == null) return b.netSharpe == null ? 0 : 1;
+      if (b.netSharpe == null) return -1;
+      return b.netSharpe - a.netSharpe;
+    });
 
   return (
     <section id="experiments" className="mx-auto max-w-6xl px-6 py-32">

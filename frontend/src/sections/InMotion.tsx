@@ -12,7 +12,7 @@ const LABEL: Record<string, string> = {
 export default function InMotion({ chain }: { chain?: Chain | null }) {
   const c = chain === undefined ? (snapshot.chains[0] ?? null) : chain;
   const [step, setStep] = useState(0);
-  if (!c) {
+  if (!c || c.stages.length === 0) {
     return (
       <section id="motion" className="border-y border-line px-6 py-32">
         <div className="mx-auto max-w-6xl">

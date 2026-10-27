@@ -177,6 +177,7 @@ class TestMainCircuitBreaker:
             raise llm.LLMError("opencode exited 1: auth expired")
 
         monkeypatch.setattr(triage.llm, "complete", fake_complete)
+        monkeypatch.setattr(triage.llm, "preflight", lambda: None)
 
         assert triage.main_with(["--jobs", "1", "--limit", "5"]) == 1
         out = capsys.readouterr().out

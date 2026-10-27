@@ -110,6 +110,27 @@
 - Before committing, run relevant tests and the production build, including
   TypeScript checks. Report failures and environment limitations explicitly.
 
+## Security
+
+- Never commit secrets or expose credentials, tokens, private data, or sensitive
+  logs in browser bundles, generated snapshots, or public build artifacts.
+  Treat frontend environment variables as public configuration.
+- Treat imported content and external URLs as untrusted. Render text through
+  React's escaping; avoid raw HTML injection and dynamic code execution.
+  Allow only intended URL protocols, normally HTTPS or HTTP for external links.
+- Bind development servers to localhost by default. Do not use development or
+  preview servers for public production hosting; deploy the production build
+  through appropriate hosting with HTTPS and suitable security headers.
+- Keep dependencies locked and review security advisories. Assess whether the
+  affected code is used, and validate targeted fixes rather than applying
+  unreviewed forced upgrades.
+- Add focused security tests for malicious content, unsafe URLs, and accidental
+  sensitive-data exposure when changing those boundaries.
+- If server APIs are introduced, enforce authentication and authorization on
+  the server for protected operations. Validate inputs and apply appropriate
+  request-size limits, timeouts, and rate limits; configure CORS narrowly and
+  protect cookie-authenticated state changes against CSRF.
+
 ## Running the project
 
 - Use `uv` for the project environment, dependency management, and command

@@ -1,12 +1,13 @@
 import { useMemo, useState } from "react";
-import { workspace } from "../../content/workspace";
+import { workspace, type Article } from "../../content/workspace";
+import { httpUrl } from "../../content/urls";
 
 const STAGES = ["all", "discovered", "fetched", "triaged", "processed"];
 
 export default function Feed() {
   const [q, setQ] = useState("");
   const [stage, setStage] = useState("all");
-  const [open, setOpen] = useState<string | null>(null);
+  const [open, setOpen] = useState<Article | null>(null);
 
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -48,38 +49,42 @@ export default function Feed() {
         </p>
       ) : (
         <ol className="mt-8 border-t border-line">
-          {rows.map((a) => (
-            <li key={a.slug ?? a.url} className="border-b border-line">
-              <button className="w-full py-5 text-left transition-colors hover:bg-surface/60"
-                onClick={() => setOpen(open === a.slug ? null : a.slug)}>
-                <div className="flex items-baseline justify-between gap-6">
-                  <h2 className="min-w-0 truncate text-lg font-light">{a.title}</h2>
-                  <span className="shrink-0 font-mono text-[11px] text-dim">
-                    {a.source} · {a.posted?.slice(0, 10)}
-                  </span>
-                </div>
-                <div className="mt-1 flex items-center gap-3">
-                  <span className="border border-line px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest text-dim">
-                    {a.stage ?? "unknown"}
-                  </span>
-                  {a.triageScore !== null && (
-                    <span className="font-mono text-[11px] text-dim">
-                      triage {a.triageScore}/5
+          {rows.map((a, index) => {
+            const url = httpUrl(a.url);
+            return (
+              <li key={`${a.slug ?? a.url ?? "article"}-${index}`} className="border-b border-line">
+                <button className="w-full py-5 text-left transition-colors hover:bg-surface/60"
+                  aria-expanded={open === a}
+                  onClick={() => setOpen(open === a ? null : a)}>
+                  <div className="flex items-baseline justify-between gap-6">
+                    <h2 className="min-w-0 truncate text-lg font-light">{a.title}</h2>
+                    <span className="shrink-0 font-mono text-[11px] text-dim">
+                      {a.source} · {a.posted?.slice(0, 10)}
                     </span>
-                  )}
-                </div>
-              </button>
-              {open === a.slug && (
-                <div className="pb-6">
-                  <p className="max-w-3xl text-sm leading-relaxed text-dim">{a.blurb}</p>
-                  <a href={a.url ?? "#"} target="_blank" rel="noreferrer"
-                     className="mt-3 inline-block font-mono text-xs text-accent">
-                    read the source article →
-                  </a>
-                </div>
-              )}
-            </li>
-          ))}
+                  </div>
+                  <div className="mt-1 flex items-center gap-3">
+                    <span className="border border-line px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest text-dim">
+                      {a.stage ?? "unknown"}
+                    </span>
+                    {a.triageScore !== null && (
+                      <span className="font-mono text-[11px] text-dim">
+                        triage {a.triageScore}/5
+                      </span>
+                    )}
+                  </div>
+                </button>
+                {open === a && (
+                  <div className="pb-6">
+                    <p className="max-w-3xl text-sm leading-relaxed text-dim">{a.blurb}</p>
+                    {url && <a href={url} target="_blank" rel="noreferrer"
+                       className="mt-3 inline-block font-mono text-xs text-accent">
+                      read the source article →
+                    </a>}
+                  </div>
+                )}
+              </li>
+            );
+          })}
         </ol>
       )}
     </div>

@@ -1,6 +1,8 @@
 """Tests for catalog.py — series search, resolution, and multi-provider loading."""
 from __future__ import annotations
 
+from unittest.mock import Mock
+
 import pandas as pd
 import pytest
 
@@ -275,13 +277,18 @@ class TestProvenance:
     def test_primary_fetch_records_source(self, tmp_path, monkeypatch):
         monkeypatch.setattr(catalog, "CACHE_DIR", tmp_path)
         monkeypatch.setattr(catalog, "PROVENANCE", {})
-        url = ("https://fred.stlouisfed.org/graph/fredgraph.csv?id=DGS10")
-        fred = pd.DataFrame({"observation_date": ["2024-01-02"], "DGS10": ["4.0"]})
-        _stub_read_csv(monkeypatch, {url: fred})
+        fred = pd.DataFrame({"DGS10": [4.0]},
+                            index=pd.DatetimeIndex(["2024-01-02"]))
+        reader = Mock()
+        reader.read.return_value = fred
+        factory = Mock(return_value=reader)
+        monkeypatch.setattr(catalog, "FredReader", factory)
 
         catalog.load("fred:DGS10", None, None)
 
         assert catalog.PROVENANCE["fred:DGS10"] == "fred"
+        factory.assert_called_once_with("DGS10", start="1776-07-04")
+        reader.read.assert_called_once_with()
 
     def test_fallback_records_substitution(self, tmp_path, monkeypatch):
         monkeypatch.setattr(catalog, "CACHE_DIR", tmp_path)

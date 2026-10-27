@@ -101,16 +101,25 @@ def report_metrics(report_path: Path) -> list[dict]:
     return metrics
 
 
+def _artifact_path(root: Path, directory: str, filename: str) -> Path | None:
+    """Only read files contained in their artifact directory, including symlinks."""
+    base = root.resolve() / directory
+    path = (base / filename).resolve()
+    return path if path.is_relative_to(base) and path.is_file() else None
+
+
 def _archive_row_article(row: dict, root: Path) -> dict | None:
     slug = row.get("slug")
     if not slug:
         return None
     source = "research lane"
-    spec_path = root / "specs" / f"{slug}.yaml"
-    if spec_path.exists():
+    spec_path = _artifact_path(root, "specs", f"{slug}.yaml")
+    if spec_path is not None:
         try:
-            meta = (yaml.safe_load(spec_path.read_text()) or {}).get("meta", {})
-            source = meta.get("source") or source
+            spec = yaml.safe_load(spec_path.read_text())
+            meta = spec.get("meta") if isinstance(spec, dict) else None
+            if isinstance(meta, dict):
+                source = meta.get("source") or source
         except yaml.YAMLError:
             pass
     return {"slug": slug, "source": source, "lane": "article",
@@ -144,8 +153,12 @@ def _spec_summary(path: Path, has_code: bool) -> dict | None:
     """Structured fields and complete raw YAML for the Strategy Lab."""
     try:
         raw = path.read_text(errors="ignore")
-        spec = yaml.safe_load(raw) or {}
+        spec = yaml.safe_load(raw)
     except yaml.YAMLError:
+        return None
+    if not isinstance(spec, dict) or any(
+            not isinstance(spec.get(key, {}), dict)
+            for key in ("meta", "data", "signal", "rules", "verdict")):
         return None
     meta = spec.get("meta") or {}
     data = spec.get("data") or {}
@@ -199,9 +212,10 @@ def _workspace(root: Path, articles: list[dict], triage: list[dict],
 
     reports = {}
     for path in (root / "reports").glob("*.md") if (root / "reports").exists() else []:
+        if _artifact_path(root, "reports", path.name) is None:
+            continue
         reports[path.stem] = {"metrics": report_metrics(path),
-                              "text": truncate(path.read_text(errors="ignore"),
-                                               8000)}
+                              "text": path.read_text(errors="ignore")}
 
     failed = []
     # Live failures = current .error markers. results/failed.jsonl is
@@ -270,7 +284,8 @@ def build_snapshot(root: Path) -> dict:
     triage = load_jsonl(root / "data" / "triage.jsonl")
     lead = load_jsonl(root / "results" / "leaderboard.jsonl")
     external = load_jsonl(root / "results" / "external" / "leaderboard.jsonl")
-    specs = sorted((root / "specs").glob("*.yaml")) if (root / "specs").exists() else []
+    specs = sorted(p for p in (root / "specs").glob("*.yaml")
+                   if _artifact_path(root, "specs", p.name) is not None)
     by_slug = {a.get("slug"): a for a in articles}
 
     archive = [r for r in (_archive_row_article(r, root) for r in lead) if r]
@@ -281,12 +296,12 @@ def build_snapshot(root: Path) -> dict:
     chains = []
     for row in lead:
         slug = row.get("slug")
-        if not slug or not (root / "reports" / f"{slug}.md").exists():
+        report_path = _artifact_path(root, "reports", f"{slug}.md")
+        if not slug or report_path is None:
             continue
         article = by_slug.get(slug, {})
-        spec_path = root / "specs" / f"{slug}.yaml"
-        code_path = root / "strategies" / f"{slug}.py"
-        report_path = root / "reports" / f"{slug}.md"
+        spec_path = _artifact_path(root, "specs", f"{slug}.yaml")
+        code_path = _artifact_path(root, "strategies", f"{slug}.py")
         chains.append({
             "slug": slug, "title": article.get("title") or slug,
             "stages": [
@@ -296,12 +311,12 @@ def build_snapshot(root: Path) -> dict:
                  "repoPath": f"data/articles.jsonl#{slug}"},
                 {"kind": "spec", "title": f"specs/{slug}.yaml",
                  "body": truncate(spec_path.read_text(errors="ignore")
-                                  if spec_path.exists() else "(no spec yet)",
+                                  if spec_path is not None else "(no spec yet)",
                                   MAX_ARTIFACT),
                  "repoPath": f"specs/{slug}.yaml"},
                 {"kind": "code", "title": f"strategies/{slug}.py",
                  "body": truncate(code_path.read_text(errors="ignore")
-                                  if code_path.exists()
+                                  if code_path is not None
                                   else "(no generated code yet)", MAX_ARTIFACT),
                  "repoPath": f"strategies/{slug}.py"},
                 {"kind": "report", "title": f"reports/{slug}.md",
@@ -314,7 +329,8 @@ def build_snapshot(root: Path) -> dict:
 
     headline = None
     for row in reversed(lead):
-        metrics = report_metrics(root / "reports" / f"{row.get('slug')}.md")
+        report_path = _artifact_path(root, "reports", f"{row.get('slug')}.md")
+        metrics = report_metrics(report_path) if report_path is not None else []
         if metrics:
             headline = {"slug": row["slug"], "metrics": metrics}
             break

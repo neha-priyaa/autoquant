@@ -493,6 +493,7 @@ class TestMainCircuitBreaker:
             raise llm.LLMError("opencode exited 1: auth expired")
 
         monkeypatch.setattr(extract.llm, "complete", fake_complete)
+        monkeypatch.setattr(extract.llm, "preflight", lambda: None)
 
         assert extract.main_with(["--jobs", "1", "--limit", "5"]) == 1
         assert "aborting" in capsys.readouterr().out

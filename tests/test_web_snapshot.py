@@ -4,6 +4,8 @@ import importlib.util
 import json
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -128,6 +130,74 @@ class TestHeadlineAndChains:
 
 
 class TestWorkspace:
+    @pytest.mark.parametrize("directory,filename", [
+        ("reports", "a.md"), ("specs", "a.yaml"), ("strategies", "a.py"),
+    ])
+    def test_symlinked_artifacts_cannot_publish_outside_files(
+            self, tmp_path, directory, filename):
+        root = tmp_path / "repo"
+        for name in ("results", "reports", "specs", "strategies"):
+            (root / name).mkdir(parents=True, exist_ok=True)
+        (root / "reports" / "a.md").write_text("Public report")
+        private = tmp_path / filename
+        private.write_text("PRIVATE_TEST_MARKER")
+        target = root / directory / filename
+        target.unlink(missing_ok=True)
+        target.symlink_to(private)
+        (root / "results" / "leaderboard.jsonl").write_text(
+            json.dumps({"slug": "a", "verdict": "ok"}) + "\n")
+
+        snapshot = load_module().build_snapshot(root)
+
+        assert "PRIVATE_TEST_MARKER" not in json.dumps(snapshot)
+
+    def test_artifact_slug_cannot_publish_files_outside_root(self, tmp_path):
+        root = tmp_path / "repo"
+        (root / "results").mkdir(parents=True)
+        (root / "reports").mkdir()
+        (tmp_path / "private.md").write_text("PRIVATE_TEST_MARKER")
+        (root / "results" / "leaderboard.jsonl").write_text(
+            json.dumps({"slug": "../../private", "verdict": "ok"}) + "\n")
+
+        snapshot = load_module().build_snapshot(root)
+
+        assert "PRIVATE_TEST_MARKER" not in json.dumps(snapshot)
+
+    def test_scalar_universe_coerced(self, tmp_path):
+        (tmp_path / "specs").mkdir()
+        (tmp_path / "specs" / "a.yaml").write_text(
+            "meta:\n  slug: a\ndata:\n  universe: SPY\n")
+        w = load_module().build_snapshot(tmp_path)["workspace"]
+        assert w["specs"][0]["universe"] == ["SPY"]
+
+    @pytest.mark.parametrize("source", [
+        "- item\n", "scalar\n", "meta: [item]\n", "data: [SPY]\n", "meta: [\n",
+    ], ids=["root-list", "root-scalar", "metadata-list", "data-list", "invalid-yaml"])
+    def test_malformed_spec_does_not_block_other_specs(self, tmp_path, source):
+        specs = tmp_path / "specs"
+        specs.mkdir()
+        (specs / "invalid.yaml").write_text(source)
+        (specs / "valid.yaml").write_text("meta:\n  slug: valid\n")
+        (tmp_path / "results").mkdir()
+        (tmp_path / "results" / "leaderboard.jsonl").write_text(
+            json.dumps({"slug": "invalid", "verdict": "ok"}) + "\n")
+
+        snapshot = load_module().build_snapshot(tmp_path)
+
+        assert "valid" in [spec["slug"] for spec in snapshot["workspace"]["specs"]]
+        json.dumps(snapshot, allow_nan=False)
+
+    def test_full_report_retains_its_final_results(self, tmp_path):
+        reports = tmp_path / "reports"
+        reports.mkdir()
+        source = "# Report\n" + "Evidence.\n" * 1000 + "Final result: FAILED\n"
+        (reports / "long.md").write_text(source)
+
+        report = load_module().build_snapshot(tmp_path)["workspace"]["reports"]["long"]
+
+        assert "Final result: FAILED" in report["text"]
+        assert report["text"].strip() == source.strip()
+
     def test_workspace_sections_present_even_when_empty(self, tmp_path):
         ws = load_module()
         w = ws.build_snapshot(tmp_path)["workspace"]

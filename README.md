@@ -141,6 +141,7 @@ instead.
 
 The landing page renders a build-time snapshot of the real pipeline
 artifacts — no runtime backend, no fabricated content.
+Use Node.js 20, 22, or 24+ for the frontend tooling.
 
     uv run python scripts/web_snapshot.py   # regenerate snapshot from artifacts
     cd frontend && npm install                   # once

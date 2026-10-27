@@ -1,20 +1,21 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowUpRight, Menu, Moon, Sun, Terminal, X, Zap } from "lucide-react";
-import { useTheme } from "../lib/theme";
+import {
+  ArrowUpRight, Feather, Menu, Moon, Sparkles, Square, Sun, Terminal, X, Zap,
+} from "lucide-react";
+import { useTheme, THEME_ORDER } from "../lib/theme";
 
 const THEME_ICON = {
   dark: Moon,
   light: Sun,
   terminal: Terminal,
   amber: Zap,
+  ivory: Feather,
+  noir: Sparkles,
+  brutal: Square,
 } as const;
-const NEXT_LABEL = {
-  dark: "light",
-  light: "terminal",
-  terminal: "amber",
-  amber: "dark",
-} as const;
+const next = (t: keyof typeof THEME_ICON) =>
+  THEME_ORDER[(THEME_ORDER.indexOf(t) + 1) % THEME_ORDER.length];
 
 const LINKS: [string, string][] = [
   ["Product", "#product"],
@@ -59,7 +60,7 @@ export default function Nav() {
           <button
             onClick={toggle}
             aria-label={`Switch theme (current: ${theme})`}
-            title={`theme: ${theme} → ${NEXT_LABEL[theme]}`}
+            title={`skin: ${theme} → next: ${next(theme)}`}
             className="flex items-center gap-2 text-dim transition-colors hover:text-ink"
           >
             {(() => {

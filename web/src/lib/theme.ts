@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 
-export type Theme = "dark" | "light" | "terminal" | "amber";
-export const THEME_ORDER: Theme[] = ["dark", "light", "terminal", "amber"];
+export type Theme =
+  | "dark" | "light" | "terminal" | "amber"
+  | "ivory" | "noir" | "brutal";
+export const THEME_ORDER: Theme[] = [
+  "dark", "light", "terminal", "amber", "ivory", "noir", "brutal",
+];
 const KEY = "aq-theme";
 
 const isTheme = (v: string | undefined | null): v is Theme =>

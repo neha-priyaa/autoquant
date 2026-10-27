@@ -1,7 +1,8 @@
 import { NavLink, Outlet } from "react-router-dom";
 import {
-  ArrowLeft, BarChart3, FlaskConical, LayoutDashboard,
-  Library, ListFilter, Moon, Newspaper, Sun, Terminal, Trophy, Zap,
+  ArrowLeft, BarChart3, Feather, FlaskConical, LayoutDashboard,
+  Library, ListFilter, Moon, Newspaper, Sparkles, Square, Sun, Terminal,
+  Trophy, Zap,
 } from "lucide-react";
 import { useTheme } from "../lib/theme";
 
@@ -10,6 +11,9 @@ const THEME_ICON = {
   light: Sun,
   terminal: Terminal,
   amber: Zap,
+  ivory: Feather,
+  noir: Sparkles,
+  brutal: Square,
 } as const;
 
 const TABS = [

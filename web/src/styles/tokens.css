@@ -53,6 +53,78 @@ html[data-theme="amber"] {
 
 html:not([data-theme="light"]) { color-scheme: dark; }
 
+/* Ivory — serif print-journal: Playfair display, hairline warm rules.
+   (accent 7.9:1, ink 16.0:1, dim 5.0:1 on #F7F2E7) */
+html[data-theme="ivory"] {
+  --color-bg: #f7f2e7;
+  --color-surface: #fdfaf2;
+  --color-ink: #1a1712;
+  --color-dim: #6e675b;
+  --color-accent: #2f5233;
+  --color-fail: #a03b2a;
+  --color-line: rgba(26, 23, 18, 0.18);
+  --font-display: "Playfair Display", Georgia, serif;
+  color-scheme: light;
+}
+html[data-theme="ivory"] h1,
+html[data-theme="ivory"] h2,
+html[data-theme="ivory"] h3 {
+  font-family: "Playfair Display", Georgia, serif;
+  letter-spacing: -0.01em;
+}
+
+/* Noir — neon synthwave: magenta/cyan on purple-black, glow signature.
+   (accent 6.5:1, ink 16.8:1, dim 5.6:1 on #0A0612) */
+html[data-theme="noir"] {
+  --color-bg: #0a0612;
+  --color-surface: #150c24;
+  --color-ink: #f0e8f5;
+  --color-dim: #8e82a3;
+  --color-accent: #ff3dcf;
+  --color-fail: #ff6d5e;
+  --color-line: rgba(240, 232, 245, 0.16);
+  color-scheme: dark;
+}
+html[data-theme="noir"] .text-accent {
+  text-shadow: 0 0 14px rgba(255, 61, 207, 0.5);
+}
+html[data-theme="noir"] .bg-accent {
+  box-shadow: 0 0 24px rgba(255, 61, 207, 0.45);
+}
+html[data-theme="noir"] section h1 {
+  background: linear-gradient(92deg, #ff3dcf 20%, #4de3ff 80%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Brutal — mono brutalism: pure black/white, acid blocks, hard shadows.
+   (ink 21:1, dim 9.7:1; accent is a block color — black text on acid) */
+html[data-theme="brutal"] {
+  --color-bg: #ffffff;
+  --color-surface: #f2f2f2;
+  --color-ink: #000000;
+  --color-dim: #444444;
+  --color-accent: #ffe800;
+  --color-fail: #d42222;
+  --color-line: #000000;
+  --font-display: "JetBrains Mono", ui-monospace, monospace;
+  color-scheme: light;
+}
+html[data-theme="brutal"] .border-line { border-width: 2px; }
+/* acid yellow as text on white is unreadable; #6B6000 is 6.4:1 — covers
+   text-accent and its opacity variants (text-accent/80 etc.) */
+html[data-theme="brutal"] [class*="text-accent"] { color: #6b6000; }
+html[data-theme="brutal"] .bg-accent {
+  box-shadow: 4px 4px 0 var(--color-ink);
+  color: #000000;
+}
+html[data-theme="brutal"] h1,
+html[data-theme="brutal"] h2 {
+  text-transform: uppercase;
+  letter-spacing: -0.02em;
+}
+
 html {
   background: var(--color-bg);
   color: var(--color-ink);

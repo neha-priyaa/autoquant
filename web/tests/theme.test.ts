@@ -19,9 +19,11 @@ describe("useTheme", () => {
     expect(result.current.theme).toBe("light");
   });
 
-  it("cycles through all four skins and persists each", () => {
+  it("cycles through all seven skins and persists each", () => {
     const { result } = renderHook(() => useTheme());
-    for (const expected of ["light", "terminal", "amber", "dark"]) {
+    for (const expected of [
+      "light", "terminal", "amber", "ivory", "noir", "brutal", "dark",
+    ]) {
       act(() => result.current.toggle());
       expect(result.current.theme).toBe(expected);
       expect(document.documentElement.dataset.theme).toBe(expected);
@@ -36,6 +38,8 @@ describe("useTheme", () => {
   });
 
   it("exposes the cycle order for the toggle", () => {
-    expect(THEME_ORDER).toEqual(["dark", "light", "terminal", "amber"]);
+    expect(THEME_ORDER).toEqual([
+      "dark", "light", "terminal", "amber", "ivory", "noir", "brutal",
+    ]);
   });
 });

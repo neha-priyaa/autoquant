@@ -18,6 +18,7 @@ import Lab, { SpecDetail } from "./ws/screens/Lab";
 import Backtests, { BacktestDetail } from "./ws/screens/Backtests";
 import Leaderboard from "./ws/screens/Leaderboard";
 import CatalogScreen from "./ws/screens/CatalogScreen";
+import Chat from "./ws/screens/Chat";
 import { useRevealRoot } from "./lib/reveal";
 import { normalizeBasename } from "./lib/basename";
 
@@ -65,6 +66,7 @@ export default function App() {
             <Route path="backtests/:slug" element={<BacktestDetailRoute />} />
             <Route path="leaderboard" element={<Leaderboard />} />
             <Route path="catalog" element={<CatalogScreen />} />
+            <Route path="chat" element={<Chat />} />
           </Route>
         </Routes>
       </BrowserRouter>

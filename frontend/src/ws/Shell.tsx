@@ -1,8 +1,8 @@
 import { NavLink, Outlet } from "react-router-dom";
 import {
   ArrowLeft, BarChart3, Binary, BookOpen, Feather, FlaskConical, Glasses,
-  LayoutDashboard, Library, ListFilter, Moon, Newspaper, Sparkles,
-  Square, Sun, Terminal, Trophy, Zap,
+  LayoutDashboard, Library, ListFilter, MessageSquare, Moon, Newspaper,
+  Sparkles, Square, Sun, Terminal, Trophy, Zap,
 } from "lucide-react";
 import { useTheme, THEMES, type Theme } from "../lib/theme";
 
@@ -28,6 +28,7 @@ const TABS = [
   { to: "/workspace/backtests", label: "Backtests", icon: BarChart3 },
   { to: "/workspace/leaderboard", label: "Leaderboard", icon: Trophy },
   { to: "/workspace/catalog", label: "Catalog", icon: Library },
+  { to: "/workspace/chat", label: "Chat", icon: MessageSquare },
 ];
 
 export default function Shell() {

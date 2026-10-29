@@ -20,6 +20,7 @@ const Lab = lazy(() => import("./ws/screens/Lab"));
 const Backtests = lazy(() => import("./ws/screens/Backtests"));
 const Leaderboard = lazy(() => import("./ws/screens/Leaderboard"));
 const CatalogScreen = lazy(() => import("./ws/screens/CatalogScreen"));
+const Chat = lazy(() => import("./ws/screens/Chat"));
 const SpecDetail = lazy(() =>
   import("./ws/screens/Lab").then((m) => ({ default: m.SpecDetail })));
 const BacktestDetail = lazy(() =>
@@ -93,6 +94,7 @@ export default function App() {
               <Route path="backtests/:slug" element={<BacktestDetailRoute />} />
               <Route path="leaderboard" element={<Leaderboard />} />
               <Route path="catalog" element={<CatalogScreen />} />
+              <Route path="chat" element={<Chat />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Route>

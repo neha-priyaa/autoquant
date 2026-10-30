@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Send } from "lucide-react";
 import { sendChat } from "../../lib/chatClient";
 
@@ -54,15 +56,19 @@ export default function Chat() {
             </div>
           </div>
         ) : (
-          messages.map((m, i) => (
-            <div key={i}
-                 className={`my-2 max-w-[80%] px-4 py-2.5 text-sm leading-relaxed ${
-                   m.role === "user"
-                     ? "self-end bg-accent/15 border border-accent/40"
-                     : "self-start border border-line bg-bg"}`}>
-              {m.text}
-            </div>
-          ))
+          messages.map((m, i) =>
+            m.role === "assistant" ? (
+              <div key={i}
+                   className="md my-2 max-w-[85%] self-start border border-line bg-bg px-4 py-3 text-sm leading-relaxed text-ink/95">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.text}</ReactMarkdown>
+              </div>
+            ) : (
+              <div key={i}
+                   className="my-2 max-w-[80%] self-end border border-accent/40 bg-accent/15 px-4 py-2.5 text-sm leading-relaxed">
+                {m.text}
+              </div>
+            ),
+          )
         )}
         {waiting && (
           <div className="my-2 self-start border border-line bg-bg px-4 py-2.5 font-mono text-xs text-dim">

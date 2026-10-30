@@ -27,4 +27,21 @@ describe("Chat screen", () => {
     await userEvent.click(screen.getByLabelText("Send message"));
     await waitFor(() => expect(screen.getByText("7 backtests")).toBeInTheDocument());
   });
+
+  it("renders markdown in the reply — bold, lists, tables", async () => {
+    vi.mocked(sendChat).mockResolvedValue({
+      ok: true,
+      reply: "Best is **spy-200dma**:\n\n- sharpe **1.06**\n\n| run | state |\n|---|---|\n| a | error |",
+      sessionId: "s1",
+    });
+    render(<Chat />);
+    await userEvent.type(screen.getByLabelText("Message"), "best run?");
+    await userEvent.click(screen.getByLabelText("Send message"));
+    await waitFor(() => {
+      const strongs = [...document.querySelectorAll(".md strong")].map(s => s.textContent);
+      expect(strongs).toContain("1.06");
+      expect(document.querySelector(".md li")?.textContent).toContain("1.06");
+      expect(document.querySelector(".md table")).not.toBeNull();
+    });
+  });
 });

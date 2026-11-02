@@ -8,6 +8,7 @@ import { StatusDot } from "../../components/StatusDot";
 import CliSnippet from "../../components/CliSnippet";
 import { workspace, type RunRow } from "../../content/workspace";
 import { useDocumentTitle } from "../../lib/useDocumentTitle";
+import TableScrollWrapper from "../../components/TableScrollWrapper";
 
 const helper = createColumnHelper<RunRow>();
 
@@ -93,7 +94,8 @@ export default function Leaderboard() {
           <CliSnippet command="uv run python backtest_batch.py && uv run python scripts/web_snapshot.py" label="Leaderboard is empty — run backtest_batch.py." />
         </div>
       ) : (
-        <div className="mt-8 overflow-x-auto border border-line">
+        <div className="mt-8 border border-line">
+          <TableScrollWrapper>
           <table className="w-full text-left font-mono text-sm">
             <thead>
               {table.getHeaderGroups().map((hg) => (
@@ -127,6 +129,7 @@ export default function Leaderboard() {
               ))}
             </tbody>
           </table>
+          </TableScrollWrapper>
         </div>
       )}
     </div>

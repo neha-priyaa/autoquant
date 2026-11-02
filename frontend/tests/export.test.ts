@@ -22,7 +22,7 @@ beforeAll(() => {
   });
   vi.stubGlobal("document", {
     ...document,
-    createElement: (tag: string) => {
+    createElement: () => {
       const a = { href: "", download: "", click: () => clicks.push(a as unknown as HTMLAnchorElement) };
       return a;
     },

@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { StatusDot } from "../../components/StatusDot";
+import CliSnippet from "../../components/CliSnippet";
 import { workspace, newestRuns } from "../../content/workspace";
 import { useDocumentTitle } from "../../lib/useDocumentTitle";
 
@@ -81,9 +82,9 @@ export default function Backtests() {
     <div>
       <h1 className="text-4xl font-light">Backtests</h1>
       {runs.length === 0 ? (
-        <p className="mt-16 border border-dashed border-line p-12 text-center text-dim">
-          No runs yet — backtest_batch.py writes the leaderboard and reports.
-        </p>
+        <div className="mt-16">
+          <CliSnippet command="uv run python backtest_batch.py && uv run python scripts/web_snapshot.py" label="No runs yet — backtest_batch.py writes the leaderboard and reports." />
+        </div>
       ) : (
         <ol className="mt-8 border-t border-line">
           {runs.map((r, index) => (

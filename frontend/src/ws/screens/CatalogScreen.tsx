@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { workspace } from "../../content/workspace";
 import { useDocumentTitle } from "../../lib/useDocumentTitle";
+import CliSnippet from "../../components/CliSnippet";
 
 export default function CatalogScreen() {
   useDocumentTitle("Data Catalog");
@@ -32,11 +33,18 @@ export default function CatalogScreen() {
       </div>
 
       {rows.length === 0 ? (
-        <p className="mt-16 border border-dashed border-line p-12 text-center text-dim">
-          {workspace.catalog.length === 0
-            ? "Catalog is empty — regenerate the snapshot (catalog.json at the repo root)."
-            : "No series match your search."}
-        </p>
+        workspace.catalog.length === 0 ? (
+          <div className="mt-16">
+            <CliSnippet
+              command="uv run python scripts/web_snapshot.py"
+              label="Catalog is empty — regenerate the snapshot from catalog.json."
+            />
+          </div>
+        ) : (
+          <p className="mt-16 border border-dashed border-line p-12 text-center text-dim">
+            No series match your search.
+          </p>
+        )
       ) : (
         <ol className="mt-8 border-t border-line">
           {rows.map((c) => (

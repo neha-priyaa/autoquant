@@ -4,6 +4,7 @@ import { Copy, Check } from "lucide-react";
 import { StatusDot } from "../../components/StatusDot";
 import { workspace } from "../../content/workspace";
 import { useDocumentTitle } from "../../lib/useDocumentTitle";
+import CliSnippet from "../../components/CliSnippet";
 
 function CopyButton({ text, label }: { text: string; label: string }) {
   const [done, setDone] = useState(false);
@@ -107,9 +108,9 @@ export default function Lab() {
         Explicit specifications — universe, signal, rules, costs — before any code exists.
       </p>
       {workspace.specs.length === 0 ? (
-        <p className="mt-16 border border-dashed border-line p-12 text-center text-dim">
-          No specs yet — run extract.py on triaged ideas.
-        </p>
+        <div className="mt-16">
+          <CliSnippet command="python3 extract.py && python3 codegen.py && uv run python scripts/web_snapshot.py" label="No specs yet — run extract.py on triaged ideas." />
+        </div>
       ) : (
         <ol className="mt-8 border-t border-line">
           {workspace.specs.map((s) => (

@@ -23,10 +23,6 @@ import { useDocumentTitle } from "../../src/lib/useDocumentTitle";
 
 describe("#44 dynamic document titles", () => {
   it("sets the tab title and restores the default when cleared", () => {
-    function Probe({ title }: { title: string | null }) {
-      useDocumentTitle(title);
-      return null;
-    }
     const { rerender } = renderHook(
       ({ title }: { title: string | null }) => useDocumentTitle(title),
       { initialProps: { title: "Leaderboard" as string | null } },

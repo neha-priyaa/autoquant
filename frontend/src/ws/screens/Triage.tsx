@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { workspace } from "../../content/workspace";
 import { useDocumentTitle } from "../../lib/useDocumentTitle";
+import CliSnippet from "../../components/CliSnippet";
 
 export default function Triage() {
   useDocumentTitle("Idea Triage");
@@ -30,11 +31,18 @@ export default function Triage() {
       </label>
 
       {rows.length === 0 ? (
-        <p className="mt-16 border border-dashed border-line p-12 text-center text-dim">
-          {workspace.triage.length === 0
-            ? "Nothing triaged yet — run triage.py, then regenerate the snapshot."
-            : "No ideas match the minimum score — lower the filter to see more."}
-        </p>
+        workspace.triage.length === 0 ? (
+          <div className="mt-16">
+            <CliSnippet
+              command="python3 triage.py && uv run python scripts/web_snapshot.py"
+              label="Nothing triaged yet — run the triage stage, then regenerate the snapshot."
+            />
+          </div>
+        ) : (
+          <p className="mt-16 border border-dashed border-line p-12 text-center text-dim">
+            No ideas match the minimum score — lower the filter to see more.
+          </p>
+        )
       ) : (
         <ol className="mt-8 space-y-4">
           {rows.map((t) => (

@@ -5,6 +5,7 @@ import {
 } from "@tanstack/react-table";
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { StatusDot } from "../../components/StatusDot";
+import CliSnippet from "../../components/CliSnippet";
 import { workspace, type RunRow } from "../../content/workspace";
 import { useDocumentTitle } from "../../lib/useDocumentTitle";
 
@@ -88,9 +89,9 @@ export default function Leaderboard() {
         Historical performance is not indicative of future results.
       </p>
       {workspace.runs.length === 0 ? (
-        <p className="mt-16 border border-dashed border-line p-12 text-center text-dim">
-          Leaderboard is empty — run backtest_batch.py.
-        </p>
+        <div className="mt-16">
+          <CliSnippet command="uv run python backtest_batch.py && uv run python scripts/web_snapshot.py" label="Leaderboard is empty — run backtest_batch.py." />
+        </div>
       ) : (
         <div className="mt-8 overflow-x-auto border border-line">
           <table className="w-full text-left font-mono text-sm">

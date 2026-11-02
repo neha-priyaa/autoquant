@@ -9,6 +9,7 @@ import CliSnippet from "../../components/CliSnippet";
 import { workspace, type RunRow } from "../../content/workspace";
 import { useDocumentTitle } from "../../lib/useDocumentTitle";
 import TableScrollWrapper from "../../components/TableScrollWrapper";
+import { exportToCsv, exportToJson } from "../../lib/export";
 
 const helper = createColumnHelper<RunRow>();
 
@@ -85,10 +86,29 @@ export default function Leaderboard() {
   return (
     <div>
       <h1 className="text-4xl font-light">Leaderboard</h1>
-      <p className="mt-3 max-w-2xl text-sm text-dim">
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <p className="max-w-2xl text-sm text-dim">
         Ranked by the selected column — an explicitly chosen, explainable metric.
         Historical performance is not indicative of future results.
       </p>
+        <div className="ml-auto flex gap-2">
+          <button
+            onClick={() =>
+              exportToCsv("autoquant-leaderboard",
+                ["slug", "lane", "status", "net_sharpe", "beats_null", "date"],
+                workspace.runs.map(r => [r.slug, r.lane, r.status, r.netSharpe, r.beatsNull, r.date]))}
+            className="border border-line px-3 py-2 font-mono text-[11px] tracking-widest text-dim transition-colors hover:text-ink"
+          >
+            CSV
+          </button>
+          <button
+            onClick={() => exportToJson("autoquant-leaderboard", workspace.runs)}
+            className="border border-line px-3 py-2 font-mono text-[11px] tracking-widest text-dim transition-colors hover:text-ink"
+          >
+            JSON
+          </button>
+        </div>
+      </div>
       {workspace.runs.length === 0 ? (
         <div className="mt-16">
           <CliSnippet command="uv run python backtest_batch.py && uv run python scripts/web_snapshot.py" label="Leaderboard is empty — run backtest_batch.py." />

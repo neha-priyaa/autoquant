@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { workspace } from "../../content/workspace";
 import { useDocumentTitle } from "../../lib/useDocumentTitle";
+import { exportToCsv, exportToJson } from "../../lib/export";
 import CliSnippet from "../../components/CliSnippet";
 
 export default function CatalogScreen() {
@@ -27,8 +28,26 @@ export default function CatalogScreen() {
           aria-label="Search catalog"
           className="w-72 border border-line bg-bg px-3 py-2 font-mono text-sm text-ink placeholder:text-dim/60"
         />
-        <span className="ml-auto font-mono text-xs text-dim">
-          {rows.length} / {workspace.catalogCount} SERIES
+        <span className="ml-auto flex items-center gap-3">
+          <span className="font-mono text-xs text-dim">
+            {rows.length} / {workspace.catalogCount} SERIES
+          </span>
+          <button
+            onClick={() =>
+              exportToCsv("autoquant-catalog",
+                ["id", "title", "provider", "frequency", "tags"],
+                rows.map(c => [c.id, c.title, c.provider, c.frequency,
+                               c.tags.join(" ")]))}
+            className="border border-line px-3 py-2 font-mono text-[11px] tracking-widest text-dim transition-colors hover:text-ink"
+          >
+            CSV
+          </button>
+          <button
+            onClick={() => exportToJson("autoquant-catalog", rows)}
+            className="border border-line px-3 py-2 font-mono text-[11px] tracking-widest text-dim transition-colors hover:text-ink"
+          >
+            JSON
+          </button>
         </span>
       </div>
 

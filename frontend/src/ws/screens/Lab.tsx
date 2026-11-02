@@ -87,7 +87,7 @@ export function SpecDetail({ slug }: { slug: string }) {
         <summary className="cursor-pointer px-4 py-2 font-mono text-xs text-dim">
           specs/{slug}.yaml
         </summary>
-        <pre className="max-h-96 overflow-auto p-4 font-mono text-xs leading-relaxed text-ink/90">
+        <pre tabIndex={0} className="max-h-96 overflow-auto p-4 font-mono text-xs leading-relaxed text-ink/90">
           {spec.raw}
         </pre>
       </details>

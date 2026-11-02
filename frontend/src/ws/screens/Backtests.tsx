@@ -56,7 +56,7 @@ export function BacktestDetail({ slug }: { slug: string }) {
             <summary className="cursor-pointer px-4 py-2 font-mono text-xs text-dim">
               full report — reports/{slug}.md
             </summary>
-            <pre className="max-h-[32rem] overflow-auto p-4 font-mono text-xs leading-relaxed text-ink/90">
+            <pre tabIndex={0} className="max-h-[32rem] overflow-auto p-4 font-mono text-xs leading-relaxed text-ink/90">
               {report.text}
             </pre>
           </details>

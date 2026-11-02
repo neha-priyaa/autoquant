@@ -1,8 +1,10 @@
 import { Link } from "react-router-dom";
 import { StatusDot } from "../../components/StatusDot";
 import { workspace, newestRuns } from "../../content/workspace";
+import { useDocumentTitle } from "../../lib/useDocumentTitle";
 
 export function BacktestDetail({ slug }: { slug: string }) {
+  useDocumentTitle(`Backtest: ${slug}`);
   const report = workspace.reports[slug];
   const run = newestRuns(workspace.runs).find((r) => r.slug === slug && r.lane === "article");
   if (!report && !run) {
@@ -73,6 +75,7 @@ export function BacktestDetail({ slug }: { slug: string }) {
 }
 
 export default function Backtests() {
+  useDocumentTitle("Backtests");
   const runs = newestRuns(workspace.runs);
   return (
     <div>

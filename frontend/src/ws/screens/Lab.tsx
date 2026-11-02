@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { Copy, Check } from "lucide-react";
 import { StatusDot } from "../../components/StatusDot";
 import { workspace } from "../../content/workspace";
+import { useDocumentTitle } from "../../lib/useDocumentTitle";
 
 function CopyButton({ text, label }: { text: string; label: string }) {
   const [done, setDone] = useState(false);
@@ -38,6 +39,7 @@ function CopyButton({ text, label }: { text: string; label: string }) {
 }
 
 export function SpecDetail({ slug }: { slug: string }) {
+  useDocumentTitle(`Spec: ${slug}`);
   const spec = workspace.specs.find((s) => s.slug === slug);
   const code = spec?.hasCode
     ? "(generated code available in strategies/ — snapshot carries specs only)"
@@ -97,6 +99,7 @@ export function SpecDetail({ slug }: { slug: string }) {
 }
 
 export default function Lab() {
+  useDocumentTitle("Strategy Lab");
   return (
     <div>
       <h1 className="text-4xl font-light">Strategy Lab</h1>

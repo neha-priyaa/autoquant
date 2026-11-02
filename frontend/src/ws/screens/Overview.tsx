@@ -3,8 +3,10 @@ import { MetricReadout } from "../../components/MetricReadout";
 import { StatusDot } from "../../components/StatusDot";
 import { snapshot } from "../../content/snapshot";
 import { workspace, newestRuns } from "../../content/workspace";
+import { useDocumentTitle } from "../../lib/useDocumentTitle";
 
 export default function Overview() {
+  useDocumentTitle("Overview");
   const c = snapshot.counts;
   const latest = newestRuns(workspace.runs).slice(0, 5);
   const stages = snapshot.stages;

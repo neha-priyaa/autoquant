@@ -6,10 +6,12 @@ import {
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { StatusDot } from "../../components/StatusDot";
 import { workspace, type RunRow } from "../../content/workspace";
+import { useDocumentTitle } from "../../lib/useDocumentTitle";
 
 const helper = createColumnHelper<RunRow>();
 
 export default function Leaderboard() {
+  useDocumentTitle("Leaderboard");
   const [sorting, setSorting] = useState<SortingState>([
     { id: "netSharpe", desc: true },
   ]);

@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
 import { workspace } from "../../content/workspace";
+import { useDocumentTitle } from "../../lib/useDocumentTitle";
 
 export default function Triage() {
+  useDocumentTitle("Idea Triage");
   const [minScore, setMinScore] = useState(0);
   const rows = useMemo(
     () =>

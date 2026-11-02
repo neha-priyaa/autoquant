@@ -1,10 +1,12 @@
 import { useMemo, useState } from "react";
 import { workspace, type Article } from "../../content/workspace";
+import { useDocumentTitle } from "../../lib/useDocumentTitle";
 import { httpUrl } from "../../content/urls";
 
 const STAGES = ["all", "discovered", "fetched", "triaged", "processed"];
 
 export default function Feed() {
+  useDocumentTitle("Research Feed");
   const [q, setQ] = useState("");
   const [stage, setStage] = useState("all");
   const [open, setOpen] = useState<Article | null>(null);

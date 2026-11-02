@@ -3,10 +3,12 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Send } from "lucide-react";
 import { sendChat } from "../../lib/chatClient";
+import { useDocumentTitle } from "../../lib/useDocumentTitle";
 
 interface Msg { role: "user" | "assistant"; text: string }
 
 export default function Chat() {
+  useDocumentTitle("Chat");
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [sessionId, setSessionId] = useState<string | null>(null);

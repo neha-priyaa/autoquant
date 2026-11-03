@@ -1,6 +1,6 @@
 /** The blank-screen regression: main.tsx must actually mount the app into
  * #root, not just export a component nobody renders. */
-import { act, screen, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 describe("bootstrap", () => {
@@ -11,7 +11,8 @@ describe("bootstrap", () => {
     expect(screen.getByRole("banner")).toBeInTheDocument();
     expect(screen.getByRole("contentinfo")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("link", { name: /open workspace/i }));
-    expect(screen.getByText("Research Overview")).toBeInTheDocument();
+    // workspace screens are lazy chunks — wait for the chunk to load
+    await waitFor(() => expect(screen.getByText("Research Overview")).toBeInTheDocument());
     expect(screen.queryByRole("banner")).not.toBeInTheDocument();
     expect(screen.queryByRole("contentinfo")).not.toBeInTheDocument();
     await userEvent.click(within(screen.getByRole("navigation", { name: "Workspace controls" })).getByRole("link", { name: /landing/i }));

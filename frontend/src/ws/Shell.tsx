@@ -85,7 +85,7 @@ export default function Shell() {
         <NavLink to="/" className="mb-8 px-4 font-mono text-sm tracking-[0.3em]">
           AUTOQUANT
         </NavLink>
-        <nav aria-label="Workspace" className="flex flex-col gap-1">
+        <nav aria-label="Workspace tabs" className="flex flex-col gap-1">
           {TABS.map((t) => tab(t))}
         </nav>
         <div className="mt-auto flex flex-col gap-1 px-2">

@@ -66,7 +66,7 @@ describe("Feed", () => {
 
 describe("Triage", () => {
   it("filters by minimum score", () => {
-    render(<Triage />);
+    render(<MemoryRouter><Triage /></MemoryRouter>);
     expect(screen.getByLabelText("Minimum triage score")).toHaveAttribute("max", "5");
     expect(screen.getAllByText(/\/5/).length).toBe(2);
     fireEvent.change(screen.getByLabelText("Minimum triage score"), {
@@ -80,7 +80,7 @@ describe("Triage", () => {
     const scores = W.triage.map((row) => row.score);
     W.triage.forEach((row) => { row.score = 2; });
     try {
-      render(<Triage />);
+      render(<MemoryRouter><Triage /></MemoryRouter>);
       fireEvent.change(screen.getByLabelText("Minimum triage score"), { target: { value: "5" } });
       expect(screen.getByText(/No ideas match/)).toBeInTheDocument();
       expect(screen.queryByText(/Nothing triaged yet/)).not.toBeInTheDocument();
@@ -94,7 +94,7 @@ describe("Leaderboard", () => {
   const slugs = () => screen.getAllByRole("row").slice(1).map(
     (row) => within(row).getAllByRole("cell")[1].textContent);
   it("keeps missing measurements last in both directions", async () => {
-    render(<Leaderboard />);
+    render(<MemoryRouter><Leaderboard /></MemoryRouter>);
     expect(slugs()).toEqual(["s1", "negative", "nb1"]);
     await userEvent.click(screen.getByRole("button", { name: "Sort by netSharpe" }));
     expect(slugs()).toEqual(["negative", "s1", "nb1"]);
@@ -104,7 +104,7 @@ describe("Leaderboard", () => {
     expect(slugs().at(-1)).toBe("nb1");
   });
   it("renders both lanes and sorts", async () => {
-    render(<Leaderboard />);
+    render(<MemoryRouter><Leaderboard /></MemoryRouter>);
     expect(screen.getByText("s1")).toBeInTheDocument();
     expect(screen.getByText("nb1")).toBeInTheDocument();
     const sortBtns = screen.getAllByRole("button", { name: /sort by/i });
@@ -178,7 +178,7 @@ describe("loadWorkspace", () => {
 
 describe("Catalog", () => {
   it("distinguishes a search with no matches and restores results on clear", async () => {
-    render(<CatalogScreen />);
+    render(<MemoryRouter><CatalogScreen /></MemoryRouter>);
     const search = screen.getByRole("textbox", { name: "Search catalog" });
     await userEvent.type(search, "no-such-series");
     expect(screen.getByText("No series match your search.")).toBeInTheDocument();
@@ -190,7 +190,7 @@ describe("Catalog", () => {
   it("keeps the missing-artifact guidance for a genuinely empty catalog", () => {
     const catalog = W.catalog.splice(0);
     try {
-      render(<CatalogScreen />);
+      render(<MemoryRouter><CatalogScreen /></MemoryRouter>);
       expect(screen.getByText(/Catalog is empty/)).toBeInTheDocument();
     } finally {
       W.catalog.push(...catalog);

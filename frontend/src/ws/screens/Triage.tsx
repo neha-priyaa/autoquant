@@ -1,17 +1,19 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { workspace } from "../../content/workspace";
 import { useDocumentTitle } from "../../lib/useDocumentTitle";
+import { useQueryState } from "../../lib/useQueryState";
 import CliSnippet from "../../components/CliSnippet";
 
 export default function Triage() {
   useDocumentTitle("Idea Triage");
-  const [minScore, setMinScore] = useState(0);
+  const [minScore, setMinScore] = useQueryState("minScore", "0");
+  const minScoreNum = Number.isNaN(Number(minScore)) ? 0 : Number(minScore);
   const rows = useMemo(
     () =>
       [...workspace.triage]
-        .filter((t) => (t.score ?? -1) >= minScore)
+        .filter((t) => (t.score ?? -1) >= minScoreNum)
         .sort((a, b) => (b.score ?? -1) - (a.score ?? -1)),
-    [minScore],
+    [minScoreNum],
   );
 
   return (
@@ -23,9 +25,9 @@ export default function Triage() {
       </p>
 
       <label className="mt-6 flex items-center gap-3 font-mono text-xs text-dim">
-        MIN SCORE {minScore}
-        <input type="range" min={0} max={5} value={minScore}
-               onChange={(e) => setMinScore(Number(e.target.value))}
+        MIN SCORE {minScoreNum}
+        <input type="range" min={0} max={5} value={minScoreNum}
+               onChange={(e) => setMinScore(e.target.value)}
                className="accent-accent" aria-label="Minimum triage score" />
         <span className="ml-auto">{rows.length} IDEAS</span>
       </label>

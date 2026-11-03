@@ -1,12 +1,13 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { workspace } from "../../content/workspace";
 import { useDocumentTitle } from "../../lib/useDocumentTitle";
+import { useQueryState } from "../../lib/useQueryState";
 import { exportToCsv, exportToJson } from "../../lib/export";
 import CliSnippet from "../../components/CliSnippet";
 
 export default function CatalogScreen() {
   useDocumentTitle("Data Catalog");
-  const [q, setQ] = useState("");
+  const [q, setQ] = useQueryState("q", "");
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
     if (!needle) return workspace.catalog;

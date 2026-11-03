@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import {
   createColumnHelper, flexRender, getCoreRowModel,
   getSortedRowModel, useReactTable, type SortingState,
@@ -8,6 +8,7 @@ import { StatusDot } from "../../components/StatusDot";
 import CliSnippet from "../../components/CliSnippet";
 import { workspace, type RunRow } from "../../content/workspace";
 import { useDocumentTitle } from "../../lib/useDocumentTitle";
+import { useQueryState } from "../../lib/useQueryState";
 import TableScrollWrapper from "../../components/TableScrollWrapper";
 import { exportToCsv, exportToJson } from "../../lib/export";
 
@@ -15,9 +16,17 @@ const helper = createColumnHelper<RunRow>();
 
 export default function Leaderboard() {
   useDocumentTitle("Leaderboard");
-  const [sorting, setSorting] = useState<SortingState>([
-    { id: "netSharpe", desc: true },
-  ]);
+  const [sortParam, setSortParam] = useQueryState("sort", "netSharpe:desc");
+  const [id, dir] = sortParam.split(":");
+  // memoized: a fresh array every render would loop TanStack's state updates
+  const sorting = useMemo<SortingState>(
+    () => [{ id, desc: dir !== "asc" }],
+    [id, dir],
+  );
+  const setSorting = (updater: SortingState | ((old: SortingState) => SortingState)) => {
+    const next = typeof updater === "function" ? updater(sorting) : updater;
+    setSortParam(next.length ? `${next[0].id}:${next[0].desc ? "desc" : "asc"}` : "netSharpe:desc");
+  };
   const columns = useMemo(
     () => [
       helper.accessor("status", {

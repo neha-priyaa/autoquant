@@ -123,3 +123,17 @@ class TestLegacy:
             "AttributeError: ...", env_used="main", pins=True) is False
         assert re_.legacy_worth_retry(
             "error: file not found", env_used="main", pins=False) is False
+
+
+class TestNoProject:
+    def test_all_uv_calls_include_no_project(self, tmp_path, monkeypatch):
+        req = tmp_path / "requirements.txt"
+        req.write_text("pandas==1.3.0\n")
+        calls = []
+        monkeypatch.setattr(re_, "_run", lambda cmd: calls.append(cmd) or (0, ""))
+        re_.ensure_env(tmp_path, manifest_with(requirements_txt="requirements.txt"))
+        re_.legacy_env(tmp_path)
+        uv_calls = [c for c in calls if c[0] == "uv"]
+        assert len(uv_calls) >= 3  # venv build, pip install, legacy venv
+        for c in uv_calls:
+            assert "--no-project" in c, c

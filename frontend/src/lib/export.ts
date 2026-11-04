@@ -6,9 +6,14 @@ export function exportToCsv(
   headers: string[],
   rows: (string | number | boolean | null | undefined)[][],
 ): void {
+  const safe = (s: string) =>
+    /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   const cell = (v: string | number | boolean | null | undefined) => {
+    // CSV injection: a leading =/+/-/@ would evaluate as a spreadsheet
+    // formula — prefix with an apostrophe (quoted again if it needs it)
+    if (typeof v === "string" && /^[=+\-@]/.test(v)) return safe("'" + v);
     const s = v === null || v === undefined ? "" : String(v);
-    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    return safe(s);
   };
   const lines = [headers.map(cell).join(","), ...rows.map(r => r.map(cell).join(","))];
   download(`${filename}.csv`, lines.join("\n"), "text/csv");

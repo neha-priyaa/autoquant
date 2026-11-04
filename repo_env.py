@@ -100,7 +100,7 @@ def _env_key(manifest: dict, deps_paths: list[Path]) -> str:
 def _pip_install(python: Path, reqs: list[str]) -> tuple[int, str]:
     """Install into the venv via uv pip, targeting its interpreter."""
     if reqs:
-        rc, err = _run(["uv", "pip", "install", "--python", str(python), *reqs])
+        rc, err = _run(["uv", "--no-project", "pip", "install", "--python", str(python), *reqs])
         if rc != 0:
             return rc, err
     return 0, ""
@@ -109,7 +109,7 @@ def _pip_install(python: Path, reqs: list[str]) -> tuple[int, str]:
 def build_env(repo_dir: Path, manifest: dict) -> dict:
     venv = repo_dir / ".venv"
     python = venv / "bin" / "python"
-    rc, err = _run(["uv", "venv", str(venv)])
+    rc, err = _run(["uv", "--no-project", "venv", str(venv)])
     if rc != 0:
         return {"env": "unsupported", "reason": f"uv venv failed: {err}"}
     reqs_rel = manifest["deps"].get("requirements_txt")
@@ -178,7 +178,7 @@ def legacy_env(repo_dir: Path) -> dict:
             pass
     venv = repo_dir / ".venv-legacy"
     python = venv / "bin" / "python"
-    rc, err = _run(["uv", "venv", "--python", LEGACY_PYTHON, str(venv)])
+    rc, err = _run(["uv", "--no-project", "venv", "--python", LEGACY_PYTHON, str(venv)])
     if rc != 0:
         return {"env": "unsupported", "reason": f"legacy uv venv failed: {err}"}
     rc, err = _pip_install(python, LEGACY_PINS)

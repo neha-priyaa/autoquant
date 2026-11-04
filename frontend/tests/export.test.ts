@@ -58,3 +58,19 @@ describe("exportToJson", () => {
     expect(clicks[0].download).toBe("data.json");
   });
 });
+
+describe("CSV injection & \\r hardening (#48)", () => {
+  it("quotes values containing \\r so a record never splits", async () => {
+    exportToCsv("x", ["v"], [["line1\rline2"]]);
+    const text = await created[0].blob.text();
+    expect(text).toBe('v\n"line1\rline2"');
+    expect(text.split("\r").length - 1).toBe(1);
+  });
+
+  it.each(["=1+1", "+2", "@cmd", "-2"])(
+    "neutralises formula-leading value %s", async (v) => {
+      exportToCsv("x", ["v"], [[v]]);
+      const text = await created[0].blob.text();
+      expect(text).toBe(`v\n'${v}`);
+    });
+});

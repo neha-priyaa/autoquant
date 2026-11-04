@@ -5,6 +5,7 @@ description = "Research workspace for turning published quantitative ideas into 
 requires-python = ">=3.11"
 dependencies = [
     "beautifulsoup4>=4.12",
+    "duckdb>=2.0.0",
     "fastapi>=0.162.0",
     "numpy>=1.26",
     "pandas>=2.0",

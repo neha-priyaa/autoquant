@@ -26,6 +26,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import catalog
+import market_families
+import runs_db
 import numpy as np
 import pandas as pd
 import yaml
@@ -46,14 +48,13 @@ def load_prices(ticker: str, start, end, cache_dir: Path) -> pd.DataFrame:
             sys.exit(f"error: {exc}")
     cache_dir.mkdir(parents=True, exist_ok=True)
     cache = cache_dir / f"{ticker.replace('/', '_')}.csv"
-    if cache.exists():
-        df = pd.read_csv(cache, index_col=0, parse_dates=True)
-    else:
+    df = catalog._read_cache(cache) if cache.exists() else None
+    if df is None:
         import yfinance as yf
 
         df = yf.download(ticker, start="1990-01-01", auto_adjust=True, progress=False)
         df = catalog.normalize_yahoo(df)
-        df.to_csv(cache)
+        catalog._write_cache(cache, df)
     if start:
         df = df[df.index >= pd.Timestamp(start)]
     if end:
@@ -81,6 +82,22 @@ def load_panel(tickers: list[str], start, end, cache_dir: Path):
 
 # ---------------------------------------------------------------- backtest
 
+def validate_next_open_inputs(data: dict[str, pd.DataFrame]) -> None:
+    """Reject calendars where an open-to-open return cannot be observed."""
+    if not data:
+        raise ValueError("next_open requires at least one price series")
+    indexes = [frame.index for frame in data.values()]
+    if any(not index.equals(indexes[0]) for index in indexes[1:]):
+        raise ValueError("next_open requires identical trading calendars")
+    for ticker, frame in data.items():
+        if "open" not in frame:
+            raise ValueError(f"{ticker} has no open column")
+        opens = pd.to_numeric(frame["open"], errors="coerce")
+        invalid = ~np.isfinite(opens) | (opens <= 0)
+        if invalid.any():
+            date = frame.index[invalid.to_numpy()][0].date()
+            raise ValueError(f"{ticker} has an invalid open on {date}")
+
 def backtest(df: pd.DataFrame, weights: pd.Series, spec: dict) -> pd.DataFrame:
     """Weights are as-of-decision; the harness applies the lag and the costs."""
     rules, costs = spec["rules"], spec["costs"]
@@ -98,6 +115,7 @@ def backtest(df: pd.DataFrame, weights: pd.Series, spec: dict) -> pd.DataFrame:
     # the open t-1 -> close t-1 move that PRECEDED its own signal. That is lookahead,
     # and it inflates Sharpe by roughly 2x on a daily trend overlay.
     if rules.get("execution_price") == "next_open":
+        validate_next_open_inputs({"asset": df})
         asset_ret = (df["open"].shift(-1) / df["open"] - 1).fillna(0.0)
     else:
         asset_ret = df["close"].pct_change().fillna(0.0)
@@ -111,9 +129,12 @@ def backtest(df: pd.DataFrame, weights: pd.Series, spec: dict) -> pd.DataFrame:
     )
 
     gross = pos * asset_ret
+    trade_events = pos.ne(pos.shift()).where(pos.shift().notna(), pos.ne(0)).astype(int)
     return pd.DataFrame(
         {"pos": pos, "asset_ret": asset_ret, "gross": gross,
-         "cost": cost + carry, "net": gross - cost - carry}
+         "cost": cost + carry, "net": gross - cost - carry,
+         "position__asset": pos, "return__asset": asset_ret,
+         "gross_exposure": pos.abs(), "trade_events": trade_events}
     )
 
 
@@ -145,22 +166,30 @@ def backtest_multi(data: dict[str, pd.DataFrame], weights: pd.DataFrame,
     pos_frame = w.shift(lag).fillna(0.0)
 
     if rules.get("execution_price") == "next_open":
+        validate_next_open_inputs(data)
         rets = pd.DataFrame({t: (df["open"].shift(-1) / df["open"] - 1).fillna(0.0)
                              for t, df in data.items()})
     else:
         rets = pd.DataFrame({t: df["close"].pct_change().fillna(0.0)
                              for t, df in data.items()})
 
-    turnover = pos_frame.diff().abs()
-    turnover.iloc[0] = pos_frame.iloc[0].abs()
+    turnover = pos_frame.diff().abs().fillna(pos_frame.abs())
     per_side = (costs.get("commission_bps", 0) + costs.get("slippage_bps", 0)) / 1e4
     cost = turnover.sum(axis=1) * per_side
 
     gross = (pos_frame * rets.reindex(columns=pos_frame.columns)).sum(axis=1)
     total = pos_frame.sum(axis=1)
     port_ret = (gross / total.where(total != 0)).fillna(0.0)
-    return pd.DataFrame({"pos": total, "asset_ret": port_ret, "gross": gross,
-                         "cost": cost, "net": gross - cost})
+    previous = pos_frame.shift()
+    trade_events = pos_frame.ne(previous).where(previous.notna(), pos_frame.ne(0)).sum(axis=1)
+    result = pd.DataFrame({"pos": total, "asset_ret": port_ret, "gross": gross,
+                           "cost": cost, "net": gross - cost,
+                           "gross_exposure": pos_frame.abs().sum(axis=1),
+                           "trade_events": trade_events})
+    for ticker in pos_frame:
+        result[f"position__{ticker}"] = pos_frame[ticker]
+        result[f"return__{ticker}"] = rets[ticker]
+    return result
 
 
 def metrics(res: pd.DataFrame, col: str = "net") -> dict:
@@ -172,8 +201,8 @@ def metrics(res: pd.DataFrame, col: str = "net") -> dict:
     cagr = eq.iloc[-1] ** (1 / yrs) - 1 if yrs > 0 and eq.iloc[-1] > 0 else np.nan
     vol = r.std() * np.sqrt(TRADING_DAYS)
     sharpe = (r.mean() / r.std() * np.sqrt(TRADING_DAYS)) if r.std() > 0 else np.nan
-    dd = (eq / eq.cummax() - 1).min()
-    trades = int((res["pos"].diff().abs() > 1e-9).sum())
+    dd = (eq / eq.cummax().clip(lower=1.0) - 1).min()
+    trades = int(res["trade_events"].sum()) if "trade_events" in res else int((res["pos"].diff().abs() > 1e-9).sum())
     # t-stat on the mean daily net return: the honest significance number
     tstat = r.mean() / (r.std() / np.sqrt(len(r))) if r.std() > 0 else np.nan
     return {
@@ -182,14 +211,15 @@ def metrics(res: pd.DataFrame, col: str = "net") -> dict:
         "cagr": round(float(cagr), 4), "vol": round(float(vol), 4),
         "sharpe": round(float(sharpe), 3), "max_dd": round(float(dd), 4),
         "t_stat": round(float(tstat), 2),
-        "exposure": round(float(res["pos"].abs().mean()), 3),
+        "exposure": round(float((res["gross_exposure"] if "gross_exposure" in res else res["pos"].abs()).mean()), 3),
         "trades": trades,
         "cost_drag_annual": round(float(res["cost"].mean() * TRADING_DAYS), 4),
     }
 
 
 def buy_and_hold(res: pd.DataFrame) -> dict:
-    bh = res.assign(pos=1.0, net=res["asset_ret"], cost=0.0)
+    bh = res.assign(pos=1.0, net=res["asset_ret"], cost=0.0,
+                    gross_exposure=1.0, trade_events=0)
     m = metrics(bh)
     m["trades"] = 1
     return m
@@ -198,27 +228,36 @@ def buy_and_hold(res: pd.DataFrame) -> dict:
 # ---------------------------------------------------------------- validation
 
 def random_entry_null(res: pd.DataFrame, spec: dict, n: int = 500, seed: int = 0) -> dict:
-    """Same time-in-market, random timing. Where does the real Sharpe rank?"""
+    """Jointly shuffle observed position rows, preserving each portfolio state."""
     rng = np.random.default_rng(seed)
-    exposure = float(res["pos"].abs().mean())
     n_bars = len(res)
-    k = int(round(exposure * n_bars))
-    if k == 0 or k == n_bars:
-        return {"note": "degenerate exposure — null test not meaningful"}
-    ret = res["asset_ret"].to_numpy()
+    position_columns = [col for col in res if col.startswith("position__")]
+    portfolio_return_columns = [f"return__{col.removeprefix('position__')}" for col in position_columns]
+    if position_columns and all(col in res for col in portfolio_return_columns):
+        positions = res[position_columns].to_numpy(float)
+        returns = res[portfolio_return_columns].to_numpy(float)
+    else:
+        positions = res[["pos"]].to_numpy(float)
+        returns = res[["asset_ret"]].to_numpy(float)
+    if n_bars < 2 or not np.isfinite(positions).all() or np.all(positions == positions[0]):
+        return {"status": "not_meaningful", "note": "degenerate positions — null test not meaningful"}
     per_side = (spec["costs"].get("commission_bps", 0) + spec["costs"].get("slippage_bps", 0)) / 1e4
-
-    # All trials at once: a (n, n_bars) 0/1 position matrix. argsort of a random
-    # matrix gives k distinct bar indices per row, matching rng.choice(replace=False).
-    pos = np.zeros((n, n_bars))
-    chosen = np.argsort(rng.random((n, n_bars)), axis=1)[:, :k]
-    np.put_along_axis(pos, chosen, 1.0, axis=1)
-
-    net = pos * ret - np.abs(np.diff(pos, axis=1, prepend=0.0)) * per_side
+    order = np.argsort(rng.random((n, n_bars)), axis=1)
+    pos = positions[order]
+    gross = (pos * returns[None, :, :]).sum(axis=2)
+    turnover = np.abs(np.diff(pos, axis=1, prepend=np.zeros((n, 1, pos.shape[2])))).sum(axis=2)
+    borrow = np.maximum(-pos, 0).sum(axis=2) * spec["costs"].get("borrow_bps_annual", 0) / 1e4 / TRADING_DAYS
+    leverage = np.maximum(np.abs(pos).sum(axis=2) - 1, 0)
+    financing = leverage * spec["costs"].get("financing_bps_annual", 0) / 1e4 / TRADING_DAYS
+    net = gross - turnover * per_side - borrow - financing
     std = net.std(axis=1)
     sharpes = np.where(std > 0, net.mean(axis=1) / np.where(std > 0, std, 1.0) * np.sqrt(TRADING_DAYS), 0.0)
 
-    actual = metrics(res)["sharpe"]
+    actual_returns = res["net"].to_numpy(float)
+    actual_std = actual_returns.std()
+    if actual_std == 0:
+        return {"status": "not_meaningful", "note": "constant returns — null test not meaningful"}
+    actual = actual_returns.mean() / actual_std * np.sqrt(TRADING_DAYS)
     return {
         "actual_sharpe": actual,
         "null_sharpe_mean": round(float(sharpes.mean()), 3),
@@ -241,6 +280,25 @@ def deflated_sharpe(sharpe: float, n_bars: int, n_trials: int) -> float:
     return round(float(sharpe - e_max / sqrt(n_bars / TRADING_DAYS)), 3)
 
 
+def effective_trial_count(slug: str, n_trials: int | None) -> int:
+    """Use an explicit batch snapshot or unique completed strategy slugs."""
+    if n_trials is not None:
+        if n_trials < 1:
+            raise ValueError("n_trials must be at least 1")
+        return n_trials
+    path = ROOT / "results" / "leaderboard.jsonl"
+    completed: set[str] = set()
+    if path.exists():
+        for line in path.read_text().splitlines():
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(row, dict) and isinstance(row.get("slug"), str):
+                completed.add(row["slug"])
+    return len(completed | {slug})
+
+
 # ---------------------------------------------------------------- orchestration
 
 def load_strategy(slug: str):
@@ -260,7 +318,10 @@ def run(spec_path: Path, n_trials: int | None) -> dict:
 
 
 def run_spec(spec: dict, n_trials: int | None) -> dict:
+    if spec.get("data", {}).get("bar") != "1d":
+        sys.exit("only daily bars are supported; set data.bar: 1d")
     slug = spec["meta"]["slug"]
+    trial_count = effective_trial_count(slug, n_trials)
     mod = load_strategy(slug)
 
     tickers = spec["data"]["universe"]
@@ -282,6 +343,11 @@ def run_spec(spec: dict, n_trials: int | None) -> dict:
             if missing:
                 sys.exit(f"{', '.join(missing)} has no open column (close-only series) "
                          f"— set execution_price: close in the spec's rules")
+            try:
+                validate_next_open_inputs(
+                    {tickers[0]: df} if len(tickers) == 1 else data)
+            except ValueError as exc:
+                sys.exit(str(exc))
         return df if len(tickers) == 1 else data
 
     def evaluate(spec_variant: dict, params_override: dict) -> pd.DataFrame:
@@ -335,10 +401,9 @@ def run_spec(spec: dict, n_trials: int | None) -> dict:
         }
 
     out["null_test"] = random_entry_null(res, spec)
+    out["n_trials"] = trial_count
     out["deflated_sharpe"] = deflated_sharpe(
-        out["full"]["sharpe"], out["full"]["n_bars"],
-        n_trials or spec["validation"]["multiple_testing"].get("n_tested_so_far") or 1,
-    )
+        out["full"]["sharpe"], out["full"]["n_bars"], trial_count)
     out["auto_flags"] = auto_flags(spec, out)
     out["auto_flags"] += catalog.frequency_flags(tickers, spec["data"].get("bar"))
     out["auto_flags"] += catalog.provenance_flags(tickers)
@@ -394,7 +459,7 @@ def write_report(spec_path: Path, out: dict) -> Path:
         "",
         f"Gross Sharpe {out['gross']['sharpe']} vs net {m['sharpe']}; "
         f"annual cost drag {m['cost_drag_annual']:.2%}. "
-        f"Deflated Sharpe {out['deflated_sharpe']}.",
+        f"Deflated Sharpe {out['deflated_sharpe']} across {out['n_trials']} tested strategies.",
         "",
         "## In-sample vs since-publication",
         "",
@@ -473,6 +538,7 @@ def append_leaderboard(spec: dict, out: dict, path: Path | None = None) -> Path:
         "verdict": (spec.get("verdict") or {}).get("status") or "unknown",
         "net_sharpe": out["full"]["sharpe"],
         "deflated_sharpe": out["deflated_sharpe"],
+        "n_trials": out["n_trials"],
         "beats_null_95": out["null_test"].get("beats_null_95"),
         "commit": commit,
         "run_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -483,25 +549,152 @@ def append_leaderboard(spec: dict, out: dict, path: Path | None = None) -> Path:
     return path
 
 
-def main() -> int:
+def record_to_runs_db(spec: dict, out: dict, run_type: str, data_source: str,
+                       change_description: str | None = None,
+                       universe_family: str | None = None,
+                       db_path: Path | str | None = None,
+                       report_path: Path | str | None = None) -> None:
+    """Record this backtest execution in the DuckDB runs table."""
+    conn = runs_db.get_connection(db_path)
+    clean_src = data_source.replace(":", "_").replace("/", "_").replace("^", "")
+    run_id = f"{out['slug']}--{clean_src}--{out.get('run_at_hash', datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S'))}"
+    
+    full_m = out.get("full", {})
+    oos_m = out.get("out_of_sample", {})
+    is_m = out.get("in_sample", {})
+    bh_m = out.get("benchmark_bh", {})
+    
+    record = {
+        "run_id": run_id,
+        "strategy_slug": out["slug"],
+        "run_type": run_type,
+        "change_description": change_description,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "data_source": data_source,
+        "universe_family": universe_family,
+        "bar_frequency": spec.get("data", {}).get("bar", "1d"),
+        "start_date": str(spec.get("data", {}).get("start")),
+        "end_date": str(spec.get("data", {}).get("end")),
+        "params_json": {k: v for k, v in spec.get("signal", {}).items() if k not in ("definition", "lag_bars")},
+        "rules_json": spec.get("rules", {}),
+        "costs_json": spec.get("costs", {}),
+        "cagr": full_m.get("cagr"),
+        "net_sharpe": full_m.get("sharpe"),
+        "gross_sharpe": out.get("gross", {}).get("sharpe"),
+        "max_drawdown": full_m.get("max_drawdown"),
+        "turnover_annual": full_m.get("trades"), # trades proxy
+        "win_rate": full_m.get("win_rate"),
+        "is_sharpe": is_m.get("sharpe"),
+        "oos_sharpe": oos_m.get("sharpe"),
+        "beats_oos": (oos_m.get("sharpe") is not None and oos_m.get("sharpe") > 0),
+        "beats_null": out.get("null_test", {}).get("beats_null_95"),
+        "benchmark_cagr": bh_m.get("cagr"),
+        "benchmark_sharpe": bh_m.get("sharpe"),
+        "verdict": (spec.get("verdict") or {}).get("status") or "unknown",
+        "raw_metrics_json": out,
+        "report_path": str(report_path) if report_path else None,
+    }
+    runs_db.record_run(conn, record)
+    conn.close()
+
+
+def run_cli(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("spec", type=Path)
     ap.add_argument("--n-trials", type=int, default=None,
                     help="ideas tested so far, for the multiple-testing haircut")
     ap.add_argument("--json", action="store_true")
-    args = ap.parse_args()
+    ap.add_argument("--replace-data", type=str, default=None,
+                    help="replace universe with a single alternative data source")
+    ap.add_argument("--cross-test-peers", action="store_true",
+                    help="run strategy across its peer market family")
+    ap.add_argument("--families-file", type=Path, default=None,
+                    help="path to market families rulebook YAML")
+    ap.add_argument("--family", type=str, default=None,
+                    help="specific family to test against")
+    ap.add_argument("--description", type=str, default=None,
+                    help="custom description of change or hypothesis")
+    ap.add_argument("--db-path", type=Path, default=None,
+                    help="custom path to runs.duckdb")
+    args = ap.parse_args(argv)
 
+    spec_dict = yaml.safe_load(args.spec.read_text())
+    base_universe = spec_dict.get("data", {}).get("universe", [])
+    primary_ticker = base_universe[0] if base_universe else "unknown"
+
+    # Resolve family
+    family_name = args.family or spec_dict.get("data", {}).get("family") or market_families.find_family_for_ticker(primary_ticker, args.families_file)
+
+    if args.cross_test_peers:
+        peers = []
+        if family_name:
+            fams = market_families.load_families(args.families_file)
+            peers = fams.get(family_name, {}).get("peers", [])
+        if not peers:
+            peers = market_families.get_peers_for_ticker(primary_ticker, args.families_file)
+        if not peers:
+            sys.exit(f"error: no peer family found for {primary_ticker}")
+
+        print(f"=== Cross-Testing Peers for {spec_dict['meta']['slug']} (Family: {family_name}) ===")
+        print(f"{'Source':<20} {'Label':<25} {'Sharpe':<10} {'CAGR':<10} {'MaxDD':<10}")
+        print("-" * 75)
+
+        for peer in peers:
+            peer_id = peer.get("id") if isinstance(peer, dict) else str(peer)
+            peer_label = peer.get("label", peer_id) if isinstance(peer, dict) else peer_id
+            
+            variant_spec = copy.deepcopy(spec_dict)
+            variant_spec["data"]["universe"] = [peer_id]
+            
+            run_type = "original" if peer_id in base_universe or primary_ticker in peer_id else "peer_cross"
+            desc = args.description or f"Peer family '{family_name}': {peer_label}"
+
+            out = run_spec(variant_spec, args.n_trials)
+            record_to_runs_db(variant_spec, out, run_type=run_type, data_source=peer_id,
+                              change_description=desc, universe_family=family_name,
+                              db_path=args.db_path)
+
+            sh = f"{out['full'].get('sharpe', 0.0):.2f}"
+            cg = f"{out['full'].get('cagr', 0.0)*100:.1f}%" if out['full'].get('cagr') is not None else "N/A"
+            dd = f"{out['full'].get('max_drawdown', 0.0)*100:.1f}%" if out['full'].get('max_drawdown') is not None else "N/A"
+            print(f"{peer_id:<20} {peer_label:<25} {sh:<10} {cg:<10} {dd:<10}")
+
+        return 0
+
+    if args.replace_data:
+        variant_spec = copy.deepcopy(spec_dict)
+        variant_spec["data"]["universe"] = [args.replace_data]
+        desc = args.description or f"Replaced data {primary_ticker} -> {args.replace_data}"
+        out = run_spec(variant_spec, args.n_trials)
+        if args.json:
+            print(json.dumps(out, indent=2, default=str))
+        
+        record_to_runs_db(variant_spec, out, run_type="replacement", data_source=args.replace_data,
+                          change_description=desc, universe_family=family_name, db_path=args.db_path)
+        print(f"\n{out['slug']} [{args.replace_data}]: Sharpe {out['full']['sharpe']} net "
+              f"(B&H {out['benchmark_bh']['sharpe']}), {out['full']['trades']} trades")
+        return 0
+
+    # Default Baseline Run
     out = run(args.spec, args.n_trials)
     if args.json:
         print(json.dumps(out, indent=2, default=str))
     report = write_report(args.spec, out)
-    append_leaderboard(yaml.safe_load(args.spec.read_text()), out)
+    append_leaderboard(spec_dict, out)
+    record_to_runs_db(spec_dict, out, run_type="original", data_source=primary_ticker,
+                      change_description=args.description or "Baseline run",
+                      universe_family=family_name, db_path=args.db_path, report_path=report)
+
     print(f"\n{out['slug']}: Sharpe {out['full']['sharpe']} net "
           f"(B&H {out['benchmark_bh']['sharpe']}), {out['full']['trades']} trades")
     for f in out["auto_flags"]:
         print(f"  {f}")
     print(f"-> {report}")
     return 0
+
+
+def main() -> int:
+    return run_cli(sys.argv[1:])
 
 
 if __name__ == "__main__":

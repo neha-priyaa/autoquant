@@ -13,7 +13,6 @@ stopped. Failures are appended to results/failed.jsonl; the batch moves on.
 from __future__ import annotations
 
 import argparse
-import os
 import concurrent.futures
 import json
 import os

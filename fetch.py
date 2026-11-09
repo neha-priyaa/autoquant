@@ -42,7 +42,7 @@ STRIP = ["script", "style", "nav", "header", "footer", "aside", "form",
          "noscript", "iframe", "svg", "button"]
 # Tried in order; first hit with enough text wins. Falls back to <body>.
 CANDIDATES = ["article", "main", '[role="main"]', ".post-content", ".entry-content",
-              ".post-body", ".article-body", ".markdown-body", "#content"]
+              ".post-body", ".article-body", ".markdown-body", ".prose", "#content"]
 MIN_CHARS = 600  # below this the extraction almost certainly missed the body
 
 

@@ -67,16 +67,80 @@
 - Before a commit, run the relevant test suite and do not commit with known
   failing tests unless the user explicitly directs otherwise.
 
+## Frontend structure and simplicity
+
+- Keep frontend code compact, readable, and modular, following the same
+  responsibility-focused approach as the Python code.
+- Give modules clear responsibilities and keep feature-specific code together.
+  Keep helpers private to a feature until multiple callers need them.
+- Prefer straightforward components and local state. Introduce shared
+  components, custom hooks, dependencies, or abstraction layers only when they
+  solve a concrete current need.
+- Keep data loading and validation in the content modules, separate from
+  screen rendering and interaction logic.
+- Mirror the source structure in tests so each module's behavior is easy to
+  locate and verify.
+- Avoid speculative flexibility, unnecessary indirection, and unnecessary
+  file splitting. Remove unused compatibility code when it has no consumers.
+
+## Frontend testing
+
+- For each bug fix, first add a focused regression test that fails for the
+  reported behavior, then implement the fix.
+- Test observable behavior: what users see, click, navigate, and copy.
+  Avoid assertions tied only to component internals or CSS class names.
+- Cover loading, empty, populated, and error states where applicable.
+  Filtering populated data to zero matches must have its own test.
+- Treat imported JSON and API responses as untrusted. Test missing fields,
+  null entries, wrong types, and malformed nested structures.
+- Mock network requests, clipboard access, and other browser integrations.
+  Tests must not depend on live services or locally installed external tools.
+- Test asynchronous actions for success, failure, and repeated interaction.
+  Display success only after the operation succeeds.
+- For sorting and filtering, assert the resulting visible items and order.
+  Verify that items remain visible after updates.
+- For generated content, test the producer and rendered result together.
+  Preserve complete content or clearly disclose truncation.
+- Use accessible names, labels, and roles when selecting interactive elements.
+  Check keyboard operation for changed controls.
+- For layout or navigation changes, check a narrow mobile viewport and desktop
+  in a real browser. Verify usable controls, overflow, and direct route loading.
+- Keep tests in the configured test directories. Ensure every committed test
+  file is collected by its intended runner.
+- Before committing, run relevant tests and the production build, including
+  TypeScript checks. Report failures and environment limitations explicitly.
+
+## Security
+
+- Never commit secrets or expose credentials, tokens, private data, or sensitive
+  logs in browser bundles, generated snapshots, or public build artifacts.
+  Treat frontend environment variables as public configuration.
+- Treat imported content and external URLs as untrusted. Render text through
+  React's escaping; avoid raw HTML injection and dynamic code execution.
+  Allow only intended URL protocols, normally HTTPS or HTTP for external links.
+- Bind development servers to localhost by default. Do not use development or
+  preview servers for public production hosting; deploy the production build
+  through appropriate hosting with HTTPS and suitable security headers.
+- Keep dependencies locked and review security advisories. Assess whether the
+  affected code is used, and validate targeted fixes rather than applying
+  unreviewed forced upgrades.
+- Add focused security tests for malicious content, unsafe URLs, and accidental
+  sensitive-data exposure when changing those boundaries.
+- If server APIs are introduced, enforce authentication and authorization on
+  the server for protected operations. Validate inputs and apply appropriate
+  request-size limits, timeouts, and rate limits; configure CORS narrowly and
+  protect cookie-authenticated state changes against CSRF.
+
 ## Running the project
 
 - Use `uv` for the project environment, dependency management, and command
   execution. Do not create or invoke a virtual environment directly.
 - Run an individual script with `uv run python <script>.py --help` before
   relying on its command-line interface.
-- This repository does not yet have a declared dependency set or test suite.
-  When either is added, declare the dependencies in a project configuration,
-  use `pytest`, and run tests with `uv run pytest` (or a focused path such as
-  `uv run pytest tests/test_runner.py`).
+- Dependencies are declared in `pyproject.toml` and locked in `uv.lock`;
+  the test suite is `pytest` (configured under `[tool.pytest.ini_options]`).
+  Run the suite with `uv run python -m pytest` (or a focused path such as
+  `uv run python -m pytest tests/test_codegen.py`).
 - Keep the README's setup, run, test, formatting, and type-check commands
   current whenever the project tooling changes.
 

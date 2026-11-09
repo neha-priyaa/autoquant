@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """Stage [3] TRIAGE -- score each fetched article on "can this be backtested?"
 
-Runs triage_prompt.md over every fetched article via the `claude` CLI in
-headless mode (-p), so it uses your existing Claude Code auth -- no
-ANTHROPIC_API_KEY, no `ant auth login`.
+Runs triage_prompt.md over every fetched article via the LLM CLI configured
+in llm.py (default: `opencode run`). Swap the provider with AUTOQUANT_LLM_CMD.
 
 Routing follows the rubric in triage_prompt.md:
   score 4-5  -> triaged     (proceeds to EXTRACT)
@@ -23,8 +22,8 @@ from __future__ import annotations
 import argparse
 import concurrent.futures
 import json
+import llm
 import re
-import subprocess
 import sys
 from pathlib import Path
 
@@ -38,6 +37,12 @@ CLI_TIMEOUT = 300
 
 STAGE_FOR = {5: "triaged", 4: "triaged", 3: "borderline",
              2: "rejected", 1: "rejected", 0: "rejected"}
+ASSET_CLASSES = {"equity_index", "single_equity", "futures", "fx", "crypto",
+                 "options", "rates", "multi", "unknown"}
+LIST_FIELDS = ("evidence", "missing", "red_flags")
+RED_FLAGS = {"no_costs_mentioned", "in_sample_only", "cherry_picked_window",
+             "fewer_than_30_trades", "fitted_parameters", "gross_results_only",
+             "suspiciously_late_start", "no_benchmark"}
 
 
 def load(path: Path) -> list[dict]:
@@ -79,32 +84,78 @@ def parse_json(text: str) -> dict:
     if fence:
         text = fence.group(1).strip()
     try:
-        return json.loads(text)
+        result = json.loads(text)
+        if isinstance(result, dict):
+            return result
+        raise ValueError("JSON reply must be an object")
     except json.JSONDecodeError:
         pass
     start, end = text.find("{"), text.rfind("}")
     if start != -1 and end > start:
-        return json.loads(text[start:start + end - start + 1])
+        result = json.loads(text[start:start + end - start + 1])
+        if isinstance(result, dict):
+            return result
+        raise ValueError("JSON reply must be an object")
     raise ValueError(f"no JSON object in reply: {text[:200]!r}")
 
 
-def score_one(row: dict, rubric: str, model: str | None) -> dict:
-    page = ROOT / row["page"]
-    cmd = ["claude", "-p"] + (["--model", model] if model else [])
-    prompt = build_prompt(rubric, row, strip_body(page))
+def validate(result: dict) -> dict:
+    """Require the rubric's typed result before it can advance an article."""
+    score = result.get("score")
+    if score is not None and (isinstance(score, bool) or not isinstance(score, int)
+                              or score not in STAGE_FOR):
+        raise ValueError("invalid score")
+    if score is None:
+        if result.get("reason") != "text unavailable":
+            raise ValueError("invalid unavailable reason")
+        if any(result.get(key) is not None for key in
+               ("asset_class", "data_needed", "data_available", "est_effort", "claim")):
+            raise ValueError("invalid unavailable scalar fields")
+        if any(result.get(key) != [] for key in LIST_FIELDS):
+            raise ValueError("invalid unavailable list fields")
+        return result
+    if result.get("asset_class") not in ASSET_CLASSES:
+        raise ValueError("invalid asset_class")
+    if not isinstance(result.get("data_needed"), str):
+        raise ValueError("invalid data_needed")
+    if not isinstance(result.get("data_available"), bool):
+        raise ValueError("invalid data_available")
+    effort = result.get("est_effort")
+    if effort is not None and (isinstance(effort, bool) or not isinstance(effort, int) or effort < 0):
+        raise ValueError("invalid est_effort")
+    if not isinstance(result.get("claim"), str) or not isinstance(result.get("reason"), str):
+        raise ValueError("invalid claim or reason")
+    for key in LIST_FIELDS:
+        value = result.get(key)
+        if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+            raise ValueError(f"invalid {key}")
+    if not set(result["red_flags"]).issubset(RED_FLAGS):
+        raise ValueError("invalid red_flags")
+    return result
+
+
+def score_one(row: dict, rubric: str, model: str | None,
+              extra: list[str] | None = None) -> dict:
+    try:
+        page = ROOT / row["page"]
+        prompt = build_prompt(rubric, row, strip_body(page))
+    except (KeyError, OSError) as exc:
+        return {"url": row.get("url"), "error": f"unreadable article: {exc}"[:300]}
 
     try:
-        proc = subprocess.run(cmd, input=prompt, capture_output=True,
-                              text=True, timeout=CLI_TIMEOUT)
-    except subprocess.TimeoutExpired:
-        return {"url": row["url"], "error": f"claude CLI timed out after {CLI_TIMEOUT}s"}
-    if proc.returncode != 0:
-        return {"url": row["url"], "error": f"claude exited {proc.returncode}: {proc.stderr[:200]}"}
+        reply = llm.complete(prompt, model=model, extra=extra,
+                             timeout=CLI_TIMEOUT)
+    except llm.LLMError as exc:
+        return {"url": row["url"], "error": str(exc)}
 
     try:
-        result = parse_json(proc.stdout)
+        result = parse_json(reply)
     except (ValueError, json.JSONDecodeError) as exc:
         return {"url": row["url"], "error": f"unparseable reply: {exc}"[:300]}
+    try:
+        result = validate(result)
+    except ValueError as exc:
+        return {"url": row["url"], "error": str(exc)}
 
     result["url"] = row["url"]
     result["title"] = row["title"]
@@ -114,22 +165,32 @@ def score_one(row: dict, rubric: str, model: str | None) -> dict:
     return result
 
 
-def main() -> int:
+def main_with(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, default=0, help="0 = no limit")
-    ap.add_argument("--jobs", type=int, default=4, help="concurrent claude calls")
+    ap.add_argument("--jobs", type=int, default=4, help="concurrent LLM calls")
     ap.add_argument("--model", default=None,
                     help="override the model (default: your session's)")
+    ap.add_argument("--llm-arg", action="append", default=[], metavar="ARG",
+                    help="extra argument passed through to the LLM CLI (repeatable)")
     ap.add_argument("--rescore", action="store_true",
                     help="re-score articles already in triage.jsonl")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
+
+    try:
+        llm.preflight()
+    except llm.LLMError as exc:
+        sys.exit(f"error: {exc}")
 
     rubric = PROMPT.read_text()
     rows = load(ARTICLES)
     scored = load(TRIAGE)
     seen = set() if args.rescore else {r["url"] for r in scored}
 
-    todo = [r for r in rows if r.get("stage") == "fetched" and r["url"] not in seen]
+    rescore_stages = {"triaged", "borderline", "rejected", "untriageable", "triage_failed"}
+    todo = [r for r in rows if r.get("stage") == "fetched" or
+            (args.rescore and r.get("stage") in rescore_stages)]
+    todo = [r for r in todo if r.get("url") not in seen]
     if args.limit:
         todo = todo[:args.limit]
     if not todo:
@@ -140,8 +201,10 @@ def main() -> int:
     by_url = {r["url"]: r for r in rows}
     results: list[dict] = []
 
+    abort = None
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as pool:
-        futures = {pool.submit(score_one, r, rubric, args.model): r for r in todo}
+        futures = {pool.submit(score_one, r, rubric, args.model,
+                               args.llm_arg): r for r in todo}
         for i, fut in enumerate(concurrent.futures.as_completed(futures), 1):
             res = fut.result()
             results.append(res)
@@ -151,19 +214,26 @@ def main() -> int:
                 row["stage"] = "triage_failed"
                 row["triage_error"] = res["error"]
                 print(f"[{i}/{len(todo)}] ERR  {res['error'][:60]}")
-                continue
-
-            score = res.get("score")
-            row["stage"] = "untriageable" if score is None else STAGE_FOR.get(score, "rejected")
-            row["triage_score"] = score
-            row.pop("triage_error", None)
-            print(f"[{i}/{len(todo)}] {str(score):>4}  {row['stage']:<12} "
-                  f"{res.get('asset_class', '?'):<14} {row['title'][:44]}")
+            else:
+                score = res.get("score")
+                row["stage"] = "untriageable" if score is None else STAGE_FOR.get(score, "rejected")
+                row["triage_score"] = score
+                row.pop("triage_error", None)
+                print(f"[{i}/{len(todo)}] {str(score):>4}  {row['stage']:<12} "
+                      f"{res.get('asset_class', '?'):<14} {row['title'][:44]}")
+            abort = llm.circuit_break(results)
+            if abort:
+                pool.shutdown(wait=False, cancel_futures=True)
+                break
 
     # Replace prior entries for re-scored urls rather than appending duplicates.
     fresh = {r["url"] for r in results}
     save(TRIAGE, [r for r in scored if r["url"] not in fresh] + results)
     save(ARTICLES, rows)
+
+    if abort:
+        print(f"\n{abort}")
+        return 1
 
     counts: dict[str, int] = {}
     for r in rows:
@@ -171,6 +241,10 @@ def main() -> int:
     print("\nstages:", ", ".join(f"{k}={v}" for k, v in sorted(counts.items())))
     print(f"scores -> {TRIAGE.relative_to(ROOT)}")
     return 0
+
+
+def main() -> int:
+    return main_with()
 
 
 if __name__ == "__main__":

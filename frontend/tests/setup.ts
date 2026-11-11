@@ -17,3 +17,13 @@ if (typeof localStorage?.getItem !== "function" ||
     configurable: true,
   });
 }
+
+// jsdom has no layout or ResizeObserver; components observe size changes via
+// it in browsers, so provide a no-op stand-in for tests.
+if (typeof ResizeObserver === "undefined") {
+  globalThis.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver;
+}

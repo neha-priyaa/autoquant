@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from "@testing-library/react";
+import { act, render, screen, fireEvent } from "@testing-library/react";
 import CliSnippet from "../../src/components/CliSnippet";
 
 const COMMAND = "uv run python extract.py";
@@ -42,5 +42,23 @@ describe("CliSnippet clipboard guard", () => {
     const button = screen.getByRole("button", { name: `Copy command: ${COMMAND}` });
     expect(() => fireEvent.click(button)).not.toThrow();
     expect(await screen.findByRole("status")).toHaveTextContent(/clipboard unavailable/i);
+  });
+});
+
+describe("CliSnippet timer", () => {
+  it("cancels the copied-feedback timer when unmounted", async () => {
+    vi.useFakeTimers();
+    try {
+      const writeText = vi.fn().mockResolvedValue(undefined);
+      Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+      const { unmount } = render(<CliSnippet command={COMMAND} />);
+      fireEvent.click(screen.getByRole("button", { name: `Copy command: ${COMMAND}` }));
+      await act(async () => {});
+      expect(vi.getTimerCount()).toBe(1);
+      unmount();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

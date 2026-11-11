@@ -27,7 +27,13 @@ export default function TableScrollWrapper({ children }: { children: ReactNode }
   useEffect(() => {
     update();
     window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
+    // Content can widen without a window resize (e.g. data loads); observe it too.
+    const observer = new ResizeObserver(update);
+    if (ref.current) observer.observe(ref.current);
+    return () => {
+      window.removeEventListener("resize", update);
+      observer.disconnect();
+    };
   }, []);
 
   return (

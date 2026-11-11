@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check, Copy } from "lucide-react";
 
 /** Runnable terminal command shown in empty states, one-click copyable. */
@@ -6,6 +6,8 @@ export default function CliSnippet({ command, description }: { command: string; 
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [unavailable, setUnavailable] = useState(false);
+  const resetTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(resetTimer.current), []);
   async function copy(): Promise<void> {
     setError(null);
     setUnavailable(false);
@@ -17,7 +19,8 @@ export default function CliSnippet({ command, description }: { command: string; 
     try {
       await navigator.clipboard.writeText(command);
       setDone(true);
-      setTimeout(() => setDone(false), 1500);
+      clearTimeout(resetTimer.current);
+      resetTimer.current = setTimeout(() => setDone(false), 1500);
     } catch {
       setError("Could not copy. Allow clipboard access or copy the command manually.");
     }

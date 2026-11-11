@@ -1,6 +1,6 @@
 import { render, screen, fireEvent, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import Feed from "../src/ws/screens/Feed";
 import Triage from "../src/ws/screens/Triage";
 import Leaderboard from "../src/ws/screens/Leaderboard";
@@ -57,6 +57,39 @@ afterEach(() => W.runs.splice(0, W.runs.length, ...originalRuns));
 vi.mock("../src/content/workspace", async (importOriginal) => {
   const orig = await importOriginal<typeof import("../src/content/workspace")>();
   return { ...orig, workspace: W };
+});
+
+function SearchProbe() {
+  return <output aria-label="search">{useLocation().search}</output>;
+}
+
+describe("URL writes (#40)", () => {
+  it("writes the Feed search, stage and source to the URL, and removes defaults", async () => {
+    render(<MemoryRouter><Feed /><SearchProbe /></MemoryRouter>);
+    await userEvent.type(screen.getByLabelText("Search articles"), "alpha");
+    expect(screen.getByLabelText("search")).toHaveTextContent("?q=alpha");
+    await userEvent.selectOptions(screen.getByLabelText("Source filter"), "S1");
+    expect(screen.getByLabelText("search")).toHaveTextContent("source=S1");
+    await userEvent.clear(screen.getByLabelText("Search articles"));
+    expect(screen.getByLabelText("search")).not.toHaveTextContent("q=");
+  });
+
+  it("writes the Triage minimum score to the URL and removes it at the default", async () => {
+    render(<MemoryRouter><Triage /><SearchProbe /></MemoryRouter>);
+    fireEvent.change(screen.getByLabelText("Minimum triage score"), { target: { value: "3" } });
+    expect(screen.getByLabelText("search")).toHaveTextContent("?minScore=3");
+    fireEvent.change(screen.getByLabelText("Minimum triage score"), { target: { value: "0" } });
+    expect(screen.getByLabelText("search")).toHaveTextContent("");
+  });
+
+  it("writes the Catalog search to the URL and removes it when cleared", async () => {
+    render(<MemoryRouter><CatalogScreen /><SearchProbe /></MemoryRouter>);
+    const search = screen.getByRole("textbox", { name: "Search catalog" });
+    await userEvent.type(search, "spy");
+    expect(screen.getByLabelText("search")).toHaveTextContent("?q=spy");
+    await userEvent.clear(search);
+    expect(screen.getByLabelText("search")).not.toHaveTextContent("q=");
+  });
 });
 
 describe("Feed", () => {

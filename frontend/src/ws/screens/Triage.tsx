@@ -1,14 +1,19 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { workspace } from "../../content/workspace";
+import { useDocumentTitle } from "../../lib/useDocumentTitle";
+import { useQueryState } from "../../lib/useQueryState";
+import CliSnippet from "../../components/CliSnippet";
 
 export default function Triage() {
-  const [minScore, setMinScore] = useState(0);
+  useDocumentTitle("Idea Triage");
+  const [minScore, setMinScore] = useQueryState("minScore", "0");
+  const minScoreNum = Number.isNaN(Number(minScore)) ? 0 : Number(minScore);
   const rows = useMemo(
     () =>
       [...workspace.triage]
-        .filter((t) => (t.score ?? -1) >= minScore)
+        .filter((t) => (t.score ?? -1) >= minScoreNum)
         .sort((a, b) => (b.score ?? -1) - (a.score ?? -1)),
-    [minScore],
+    [minScoreNum],
   );
 
   return (
@@ -20,19 +25,26 @@ export default function Triage() {
       </p>
 
       <label className="mt-6 flex items-center gap-3 font-mono text-xs text-dim">
-        MIN SCORE {minScore}
-        <input type="range" min={0} max={5} value={minScore}
-               onChange={(e) => setMinScore(Number(e.target.value))}
+        MIN SCORE {minScoreNum}
+        <input type="range" min={0} max={5} value={minScoreNum}
+               onChange={(e) => setMinScore(e.target.value)}
                className="accent-accent" aria-label="Minimum triage score" />
         <span className="ml-auto">{rows.length} IDEAS</span>
       </label>
 
       {rows.length === 0 ? (
-        <p className="mt-16 border border-dashed border-line p-12 text-center text-dim">
-          {workspace.triage.length === 0
-            ? "Nothing triaged yet — run triage.py, then regenerate the snapshot."
-            : "No ideas match the minimum score — lower the filter to see more."}
-        </p>
+        workspace.triage.length === 0 ? (
+          <div className="mt-16">
+            <CliSnippet
+              command="uv run python triage.py && uv run python scripts/web_snapshot.py"
+              label="Nothing triaged yet — run the triage stage, then regenerate the snapshot."
+            />
+          </div>
+        ) : (
+          <p className="mt-16 border border-dashed border-line p-12 text-center text-dim">
+            No ideas match the minimum score — lower the filter to see more.
+          </p>
+        )
       ) : (
         <ol className="mt-8 space-y-4">
           {rows.map((t) => (

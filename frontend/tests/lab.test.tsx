@@ -1,6 +1,7 @@
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, renderHook, screen, fireEvent } from "@testing-library/react";
 import { SpecDetail } from "../src/ws/screens/Lab";
 import { workspace } from "../src/content/workspace";
+import { useDocumentTitle } from "../src/lib/useDocumentTitle";
 
 vi.mock("../src/content/workspace", () => ({
   workspace: {
@@ -20,6 +21,17 @@ it("offers copy for a complete specification", () => {
   expect(screen.getByRole("button", { name: "Copy spec YAML" })).toBeInTheDocument();
 });
 
+it("exposes the YAML preview as a focusable region (#43)", () => {
+  render(<SpecDetail slug="example" />);
+  const pre = screen.getByRole("region", { name: "Strategy specification preview" });
+  expect(pre).toHaveAttribute("tabindex", "0");
+});
+
+it("labels the detail with the slug and section (#44)", () => {
+  render(<SpecDetail slug="example" />);
+  expect(document.title).toBe("example — Strategy Lab — AutoQuant");
+});
+
 it("labels legacy truncated YAML and does not offer it as a complete copy", () => {
   spec.raw = "meta: …";
   render(<SpecDetail slug="example" />);
@@ -32,6 +44,16 @@ it("honors an explicit completeness marker for YAML ending with an ellipsis", ()
   spec.rawTruncated = false;
   render(<SpecDetail slug="example" />);
   expect(screen.getByRole("button", { name: "Copy spec YAML" })).toBeInTheDocument();
+});
+
+describe("dynamic titles", () => {
+  it("restores the previous title on unmount (#44)", () => {
+    document.title = "before";
+    const { unmount } = renderHook(() => useDocumentTitle("Leaderboard"));
+    expect(document.title).toBe("Leaderboard — AutoQuant");
+    unmount();
+    expect(document.title).toBe("before");
+  });
 });
 
 describe("copy feedback", () => {

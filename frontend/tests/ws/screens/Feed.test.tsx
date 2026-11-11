@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { Article } from "../../../src/content/workspace";
+import { MemoryRouter } from "react-router-dom";
 import Feed from "../../../src/ws/screens/Feed";
 
 const { articles } = vi.hoisted(() => ({ articles: [] as Article[] }));
@@ -16,7 +17,7 @@ beforeEach(() => { articles.length = 0; });
 it.each(["javascript:alert(1)", "data:text/html,<h1>untrusted</h1>"])(
   "does not publish an unsafe source URL: %s", async (url) => {
     articles.push({ ...article("Unsafe article", "fetched", "unsafe"), url });
-    render(<Feed />);
+    render(<MemoryRouter><Feed /></MemoryRouter>);
     await userEvent.click(screen.getByRole("button", { name: /Unsafe article/ }));
     expect(screen.queryByRole("link", { name: /read the source article/i }))
       .not.toBeInTheDocument();
@@ -26,7 +27,7 @@ it.each(["javascript:alert(1)", "data:text/html,<h1>untrusted</h1>"])(
 it("renders imported markup as text without creating executable elements", async () => {
   const markup = '<img src=x onerror="alert(1)">';
   articles.push({ ...article("Markup article", "fetched", "markup"), blurb: markup });
-  const { container } = render(<Feed />);
+  const { container } = render(<MemoryRouter><Feed /></MemoryRouter>);
   await userEvent.click(screen.getByRole("button", { name: /Markup article/ }));
   expect(screen.getByText(markup)).toBeInTheDocument();
   expect(container.querySelector("img")).toBeNull();
@@ -34,7 +35,7 @@ it("renders imported markup as text without creating executable elements", async
 
 it("opens and closes only the selected article when slugs are absent", async () => {
   articles.push(article("First", "discovered", null), article("Second", "discovered", null));
-  render(<Feed />);
+  render(<MemoryRouter><Feed /></MemoryRouter>);
   expect(screen.queryAllByRole("link", { name: /read the source article/i })).toHaveLength(0);
   const toggle = screen.getByRole("button", { name: /First/ });
   toggle.focus();
@@ -50,7 +51,7 @@ it("opens and closes only the selected article when slugs are absent", async () 
 
 it("combines stage and text filters and restores rows when filters clear", async () => {
   articles.push(article("First", "fetched", "first"), article("Second", "triaged", "second"));
-  render(<Feed />);
+  render(<MemoryRouter><Feed /></MemoryRouter>);
   await userEvent.click(screen.getByRole("button", { name: "TRIAGED" }));
   expect(screen.queryByRole("heading", { name: "First" })).not.toBeInTheDocument();
   await userEvent.type(screen.getByRole("textbox", { name: "Search articles" }), "second");

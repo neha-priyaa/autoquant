@@ -1,18 +1,32 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import {
   createColumnHelper, flexRender, getCoreRowModel,
   getSortedRowModel, useReactTable, type SortingState,
 } from "@tanstack/react-table";
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { StatusDot } from "../../components/StatusDot";
+import CliSnippet from "../../components/CliSnippet";
 import { workspace, type RunRow } from "../../content/workspace";
+import { useDocumentTitle } from "../../lib/useDocumentTitle";
+import { useQueryState } from "../../lib/useQueryState";
+import TableScrollWrapper from "../../components/TableScrollWrapper";
+import { exportToCsv, exportToJson } from "../../lib/export";
 
 const helper = createColumnHelper<RunRow>();
 
 export default function Leaderboard() {
-  const [sorting, setSorting] = useState<SortingState>([
-    { id: "netSharpe", desc: true },
-  ]);
+  useDocumentTitle("Leaderboard");
+  const [sortParam, setSortParam] = useQueryState("sort", "netSharpe:desc");
+  const [id, dir] = sortParam.split(":");
+  // memoized: a fresh array every render would loop TanStack's state updates
+  const sorting = useMemo<SortingState>(
+    () => [{ id, desc: dir !== "asc" }],
+    [id, dir],
+  );
+  const setSorting = (updater: SortingState | ((old: SortingState) => SortingState)) => {
+    const next = typeof updater === "function" ? updater(sorting) : updater;
+    setSortParam(next.length ? `${next[0].id}:${next[0].desc ? "desc" : "asc"}` : "netSharpe:desc");
+  };
   const columns = useMemo(
     () => [
       helper.accessor("status", {
@@ -78,19 +92,41 @@ export default function Leaderboard() {
     getSortedRowModel: getSortedRowModel(),
   });
 
+  const exportRows = table.getRowModel().rows.map((row) => row.original);
+
   return (
     <div>
       <h1 className="text-4xl font-light">Leaderboard</h1>
-      <p className="mt-3 max-w-2xl text-sm text-dim">
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <p className="max-w-2xl text-sm text-dim">
         Ranked by the selected column — an explicitly chosen, explainable metric.
         Historical performance is not indicative of future results.
       </p>
+        <div className="ml-auto flex gap-2">
+          <button
+            onClick={() =>
+              exportToCsv("autoquant-leaderboard",
+                ["slug", "status", "lane", "net_sharpe", "beats_null", "date"],
+                exportRows.map(r => [r.slug, r.status, r.lane, r.netSharpe, r.beatsNull, r.date]))}
+            className="border border-line px-3 py-2 font-mono text-[11px] tracking-widest text-dim transition-colors hover:text-ink"
+          >
+            CSV
+          </button>
+          <button
+            onClick={() => exportToJson("autoquant-leaderboard", exportRows)}
+            className="border border-line px-3 py-2 font-mono text-[11px] tracking-widest text-dim transition-colors hover:text-ink"
+          >
+            JSON
+          </button>
+        </div>
+      </div>
       {workspace.runs.length === 0 ? (
-        <p className="mt-16 border border-dashed border-line p-12 text-center text-dim">
-          Leaderboard is empty — run backtest_batch.py.
-        </p>
+        <div className="mt-16">
+          <CliSnippet command="uv run python backtest_batch.py && uv run python scripts/web_snapshot.py" label="Leaderboard is empty — run backtest_batch.py." />
+        </div>
       ) : (
-        <div className="mt-8 overflow-x-auto border border-line">
+        <div className="mt-8 border border-line">
+          <TableScrollWrapper>
           <table className="w-full text-left font-mono text-sm">
             <thead>
               {table.getHeaderGroups().map((hg) => (
@@ -124,6 +160,7 @@ export default function Leaderboard() {
               ))}
             </tbody>
           </table>
+          </TableScrollWrapper>
         </div>
       )}
     </div>

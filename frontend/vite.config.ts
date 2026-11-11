@@ -8,6 +8,19 @@ export default defineConfig({
   // pass --base=/autoquant/ to `vite build`; default build is root-relative
   // for Vercel.
   plugins: [react(), tailwindcss()],
+  build: {
+    rollupOptions: {
+      output: {
+        // Keep the entry (landing) chunk small (#39) by splitting the
+        // generated snapshot data it shares; node_modules are left to
+        // Rollup's default splitting so table/router/icon code is not
+        // forced eager for the landing page.
+        manualChunks(id) {
+          if (id.includes("snapshot.json")) return "snapshot";
+        },
+      },
+    },
+  },
   test: {
     environment: "jsdom",
     setupFiles: "./tests/setup.ts",

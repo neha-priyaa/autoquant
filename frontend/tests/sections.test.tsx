@@ -57,7 +57,7 @@ describe("Archive", () => {
       const ref = useRevealRoot();
       return <main ref={ref}><Archive rows={ROWS} /></main>;
     }
-    render(<Landing />);
+    render(<MemoryRouter><Landing /></MemoryRouter>);
     expect(screen.getByText("s1").closest(".reveal")).toHaveClass("in");
     await userEvent.selectOptions(screen.getByRole("combobox"), "sharpe");
     expect(screen.getByText("s1").closest(".reveal")).toHaveClass("in");

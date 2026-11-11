@@ -91,7 +91,7 @@ export default function Backtests() {
       <h1 className="text-4xl font-light">Backtests</h1>
       {runs.length === 0 ? (
         <div className="mt-16">
-          <CliSnippet command="uv run python backtest_batch.py && uv run python scripts/web_snapshot.py" label="No runs yet — backtest_batch.py writes the leaderboard and reports." />
+          <CliSnippet command="uv run python backtest_batch.py && uv run python scripts/web_snapshot.py" description="No runs yet — backtest_batch.py writes the leaderboard and reports." />
         </div>
       ) : (
         <ol className="mt-8 border-t border-line">

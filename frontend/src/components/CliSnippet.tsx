@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Check, Copy } from "lucide-react";
 
 /** Runnable terminal command shown in empty states, one-click copyable. */
-export default function CliSnippet({ command, label }: { command: string; label?: string }) {
+export default function CliSnippet({ command, description }: { command: string; description?: string }) {
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [unavailable, setUnavailable] = useState(false);
@@ -24,7 +24,7 @@ export default function CliSnippet({ command, label }: { command: string; label?
   }
   return (
     <div className="mx-auto max-w-xl text-center">
-      {label && <p className="text-sm text-dim">{label}</p>}
+      {description && <p className="text-sm text-dim">{description}</p>}
       <div className="mt-3 flex items-center justify-between gap-3 border border-line bg-bg px-4 py-2.5">
         <code className="min-w-0 overflow-x-auto whitespace-nowrap font-mono text-xs text-ink">
           {command}
@@ -37,11 +37,9 @@ export default function CliSnippet({ command, label }: { command: string; label?
           {done ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
         </button>
       </div>
-      {unavailable && (
-        <p role="status" className="mt-2 font-mono text-xs text-dim">
-          Clipboard unavailable
-        </p>
-      )}
+      <p role="status" className="mt-2 min-h-4 font-mono text-xs text-dim">
+        {unavailable ? "Clipboard unavailable" : done ? "Copied" : ""}
+      </p>
       {error && (
         <p role="alert" className="mt-2 font-mono text-xs text-dim">
           {error}

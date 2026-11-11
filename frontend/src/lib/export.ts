@@ -28,6 +28,10 @@ function download(filename: string, content: string, mime: string): void {
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
+  // Attach before clicking (some browsers ignore detached anchors) and
+  // revoke after the click has been dispatched so the download is not cancelled.
+  document.body.append(a);
   a.click();
-  URL.revokeObjectURL(url);
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }

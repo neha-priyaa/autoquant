@@ -106,23 +106,23 @@ export default function Leaderboard() {
           <button
             onClick={() =>
               exportToCsv("autoquant-leaderboard",
-                ["slug", "status", "lane", "net_sharpe", "beats_null", "date"],
+                ["Slug", "Status", "Lane", "Net Sharpe", "Beats Null", "Run Date"],
                 exportRows.map(r => [r.slug, r.status, r.lane, r.netSharpe, r.beatsNull, r.date]))}
             className="border border-line px-3 py-2 font-mono text-[11px] tracking-widest text-dim transition-colors hover:text-ink"
           >
-            CSV
+            Export CSV
           </button>
           <button
             onClick={() => exportToJson("autoquant-leaderboard", exportRows)}
             className="border border-line px-3 py-2 font-mono text-[11px] tracking-widest text-dim transition-colors hover:text-ink"
           >
-            JSON
+            Export JSON
           </button>
         </div>
       </div>
       {workspace.runs.length === 0 ? (
         <div className="mt-16">
-          <CliSnippet command="uv run python backtest_batch.py && uv run python scripts/web_snapshot.py" label="Leaderboard is empty — run backtest_batch.py." />
+          <CliSnippet command="uv run python backtest_batch.py && uv run python scripts/web_snapshot.py" description="Leaderboard is empty — run backtest_batch.py." />
         </div>
       ) : (
         <div className="mt-8 border border-line">

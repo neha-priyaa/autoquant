@@ -39,11 +39,11 @@ export default function TableScrollWrapper({ children }: { children: ReactNode }
         <>
           <div
             aria-hidden
-            className="pointer-events-none absolute inset-y-0 right-0 w-10 bg-gradient-to-l from-bg/90 to-transparent"
+            className="pointer-events-none absolute inset-y-0 right-0 w-10 sm:hidden bg-gradient-to-l from-bg/90 to-transparent"
           />
           <span
             aria-hidden
-            className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 font-mono text-[10px] text-dim"
+            className="pointer-events-none absolute right-2 top-1/2 sm:hidden -translate-y-1/2 font-mono text-[10px] text-dim"
           >
             scroll →
           </span>

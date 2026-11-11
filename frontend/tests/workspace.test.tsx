@@ -102,6 +102,16 @@ describe("Triage", () => {
     expect(screen.getByLabelText("Minimum triage score")).toHaveValue("5");
     expect(screen.getAllByText(/\/5/).length).toBe(1);
   });
+
+  it("clamps an out-of-range minimum score from the URL (#40)", () => {
+    render(
+      <MemoryRouter initialEntries={["/?minScore=99"]}>
+        <Triage />
+      </MemoryRouter>,
+    );
+    expect(screen.getByLabelText("Minimum triage score")).toHaveValue("5");
+    expect(screen.getByText("MIN SCORE 5")).toBeInTheDocument();
+  });
   it("filters by minimum score", () => {
     render(<MemoryRouter><Triage /></MemoryRouter>);
     expect(screen.getByLabelText("Minimum triage score")).toHaveAttribute("max", "5");
@@ -152,10 +162,10 @@ describe("Leaderboard", () => {
   it("exports the rows in the active sort order (#42)", async () => {
     exportSpy.csv.mockClear();
     render(<MemoryRouter><Leaderboard /></MemoryRouter>);
-    await userEvent.click(screen.getByRole("button", { name: "CSV" }));
+    await userEvent.click(screen.getByRole("button", { name: "Export CSV" }));
     const [, headers, rows] = exportSpy.csv.mock.calls[0];
-    expect(headers).toEqual(["slug", "status", "lane", "net_sharpe",
-                             "beats_null", "date"]);
+    expect(headers).toEqual(["Slug", "Status", "Lane", "Net Sharpe",
+                             "Beats Null", "Run Date"]);
     expect(rows.map((row: unknown[]) => row[0]))
       .toEqual(["s1", "negative", "nb1"]);
   });
@@ -235,6 +245,11 @@ describe("Catalog", () => {
     expect(screen.getByText("yahoo:SPY")).toBeInTheDocument();
   });
 
+  it("initializes the search from the URL (#40)", () => {
+    render(<MemoryRouter initialEntries={["/workspace/catalog?q=fred"]}><CatalogScreen /></MemoryRouter>);
+    expect(screen.getByRole("textbox", { name: "Search catalog" })).toHaveValue("fred");
+  });
+
   it("keeps the missing-artifact guidance for a genuinely empty catalog", () => {
     const catalog = W.catalog.splice(0);
     try {
@@ -248,10 +263,10 @@ describe("Catalog", () => {
   it("exports coverage, fallback, and license columns (#42)", async () => {
     exportSpy.csv.mockClear();
     render(<MemoryRouter><CatalogScreen /></MemoryRouter>);
-    await userEvent.click(screen.getByRole("button", { name: "CSV" }));
+    await userEvent.click(screen.getByRole("button", { name: "Export CSV" }));
     const [, headers, rows] = exportSpy.csv.mock.calls[0];
-    expect(headers).toEqual(["id", "title", "provider", "frequency",
-                             "coverage_start", "fallback", "license", "tags"]);
+    expect(headers).toEqual(["ID", "Title", "Provider", "Frequency",
+                             "Coverage Start", "Fallback", "License", "Tags"]);
     expect(rows[0]).toEqual(["yahoo:SPY", "S&P", "yahoo", "daily",
                              "1993-01-29", null, null, "etf"]);
   });

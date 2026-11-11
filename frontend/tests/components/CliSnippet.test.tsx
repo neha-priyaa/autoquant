@@ -21,7 +21,7 @@ describe("CliSnippet clipboard guard", () => {
     fireEvent.click(screen.getByRole("button", { name: `Copy command: ${COMMAND}` }));
     await vi.waitFor(() => expect(writeText).toHaveBeenCalledWith(COMMAND));
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(await screen.findByRole("status")).toHaveTextContent("Copied");
   });
 
   it("shows a failure message when writeText rejects", async () => {

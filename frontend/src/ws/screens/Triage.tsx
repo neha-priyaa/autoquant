@@ -7,7 +7,8 @@ import CliSnippet from "../../components/CliSnippet";
 export default function Triage() {
   useDocumentTitle("Idea Triage");
   const [minScore, setMinScore] = useQueryState("minScore", "0");
-  const minScoreNum = Number.isNaN(Number(minScore)) ? 0 : Number(minScore);
+  const parsedScore = Number.parseInt(minScore, 10);
+  const minScoreNum = Number.isNaN(parsedScore) ? 0 : Math.min(5, Math.max(0, parsedScore));
   const rows = useMemo(
     () =>
       [...workspace.triage]
@@ -37,7 +38,7 @@ export default function Triage() {
           <div className="mt-16">
             <CliSnippet
               command="uv run python triage.py && uv run python scripts/web_snapshot.py"
-              label="Nothing triaged yet — run the triage stage, then regenerate the snapshot."
+              description="Nothing triaged yet — run the triage stage, then regenerate the snapshot."
             />
           </div>
         ) : (

@@ -1,7 +1,6 @@
-import { render, renderHook, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { SpecDetail } from "../src/ws/screens/Lab";
 import { workspace } from "../src/content/workspace";
-import { useDocumentTitle } from "../src/lib/useDocumentTitle";
 
 vi.mock("../src/content/workspace", () => ({
   workspace: {
@@ -44,16 +43,6 @@ it("honors an explicit completeness marker for YAML ending with an ellipsis", ()
   spec.rawTruncated = false;
   render(<SpecDetail slug="example" />);
   expect(screen.getByRole("button", { name: "Copy spec YAML" })).toBeInTheDocument();
-});
-
-describe("dynamic titles", () => {
-  it("restores the previous title on unmount (#44)", () => {
-    document.title = "before";
-    const { unmount } = renderHook(() => useDocumentTitle("Leaderboard"));
-    expect(document.title).toBe("Leaderboard — AutoQuant");
-    unmount();
-    expect(document.title).toBe("before");
-  });
 });
 
 describe("copy feedback", () => {

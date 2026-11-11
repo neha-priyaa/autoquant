@@ -72,7 +72,7 @@ export default function Feed() {
           <div className="mt-16">
             <CliSnippet
               command="uv run python harvest.py && uv run python scripts/web_snapshot.py"
-              label="No articles yet — run harvest.py, then regenerate the snapshot."
+              description="No articles yet — run harvest.py, then regenerate the snapshot."
             />
           </div>
         ) : (

@@ -94,7 +94,7 @@ export function SpecDetail({ slug }: { slug: string }) {
           tabIndex={0}
           role="region"
           aria-label="Strategy specification preview"
-          className="max-h-96 overflow-auto border border-line bg-surface/50 p-4 font-mono text-xs leading-relaxed text-ink/90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+          className="max-h-[32rem] overflow-auto border border-line bg-surface/50 p-4 font-mono text-xs leading-relaxed text-ink/90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
         >
           {spec.raw}
         </pre>
@@ -114,7 +114,7 @@ export default function Lab() {
       </p>
       {workspace.specs.length === 0 ? (
         <div className="mt-16">
-          <CliSnippet command="uv run python extract.py && uv run python codegen.py && uv run python scripts/web_snapshot.py" label="No specs yet — run extract.py on triaged ideas." />
+          <CliSnippet command="uv run python extract.py && uv run python codegen.py && uv run python scripts/web_snapshot.py" description="No specs yet — run extract.py on triaged ideas." />
         </div>
       ) : (
         <ol className="mt-8 border-t border-line">

@@ -11,6 +11,12 @@ import { loadWorkspace } from "../src/content/workspace";
 import type { RunRow } from "../src/content/workspace";
 import { snapshot } from "../src/content/snapshot";
 
+const exportSpy = vi.hoisted(() => ({ csv: vi.fn(), json: vi.fn() }));
+vi.mock("../src/lib/export", () => ({
+  exportToCsv: exportSpy.csv,
+  exportToJson: exportSpy.json,
+}));
+
 const W = vi.hoisted(() => ({
   articles: [
     { slug: "a1", title: "Alpha article", source: "S1", url: "https://x",
@@ -62,9 +68,40 @@ describe("Feed", () => {
     expect(screen.queryByText("Other piece")).not.toBeInTheDocument();
     expect(screen.getByText("Alpha article")).toBeInTheDocument();
   });
+
+  it("initializes the source filter from the URL (#40)", () => {
+    render(
+      <MemoryRouter initialEntries={["/?source=S1"]}>
+        <Feed />
+      </MemoryRouter>,
+    );
+    expect(screen.getByLabelText("Source filter")).toHaveValue("S1");
+    expect(screen.getByText("Alpha article")).toBeInTheDocument();
+    expect(screen.queryByText("Other piece")).not.toBeInTheDocument();
+  });
+
+  it("shows a runnable command when the pipeline has no articles (#41)", () => {
+    const articles = W.articles.splice(0);
+    try {
+      render(<MemoryRouter><Feed /></MemoryRouter>);
+      expect(screen.getByText(/No articles yet/)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Copy command/ })).toBeInTheDocument();
+    } finally {
+      W.articles.push(...articles);
+    }
+  });
 });
 
 describe("Triage", () => {
+  it("initializes the minimum score from the URL (#40)", () => {
+    render(
+      <MemoryRouter initialEntries={["/?minScore=5"]}>
+        <Triage />
+      </MemoryRouter>,
+    );
+    expect(screen.getByLabelText("Minimum triage score")).toHaveValue("5");
+    expect(screen.getAllByText(/\/5/).length).toBe(1);
+  });
   it("filters by minimum score", () => {
     render(<MemoryRouter><Triage /></MemoryRouter>);
     expect(screen.getByLabelText("Minimum triage score")).toHaveAttribute("max", "5");
@@ -110,6 +147,17 @@ describe("Leaderboard", () => {
     const sortBtns = screen.getAllByRole("button", { name: /sort by/i });
     await userEvent.click(sortBtns.find((b) => b.getAttribute("aria-label") === "Sort by slug")!);
     expect(screen.getAllByText(/^(s1|nb1)$/)[0].textContent).toBe("nb1");
+  });
+
+  it("exports the rows in the active sort order (#42)", async () => {
+    exportSpy.csv.mockClear();
+    render(<MemoryRouter><Leaderboard /></MemoryRouter>);
+    await userEvent.click(screen.getByRole("button", { name: "CSV" }));
+    const [, headers, rows] = exportSpy.csv.mock.calls[0];
+    expect(headers).toEqual(["slug", "status", "lane", "net_sharpe",
+                             "beats_null", "date"]);
+    expect(rows.map((row: unknown[]) => row[0]))
+      .toEqual(["s1", "negative", "nb1"]);
   });
 });
 
@@ -195,5 +243,16 @@ describe("Catalog", () => {
     } finally {
       W.catalog.push(...catalog);
     }
+  });
+
+  it("exports coverage, fallback, and license columns (#42)", async () => {
+    exportSpy.csv.mockClear();
+    render(<MemoryRouter><CatalogScreen /></MemoryRouter>);
+    await userEvent.click(screen.getByRole("button", { name: "CSV" }));
+    const [, headers, rows] = exportSpy.csv.mock.calls[0];
+    expect(headers).toEqual(["id", "title", "provider", "frequency",
+                             "coverage_start", "fallback", "license", "tags"]);
+    expect(rows[0]).toEqual(["yahoo:SPY", "S&P", "yahoo", "daily",
+                             "1993-01-29", null, null, "etf"]);
   });
 });

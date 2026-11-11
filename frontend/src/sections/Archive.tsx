@@ -1,14 +1,15 @@
-import { useState } from "react";
 import { Reveal } from "../components/Reveal";
 import { StatusDot } from "../components/StatusDot";
 import { snapshot, type ArchiveRow } from "../content/snapshot";
+import { useQueryState } from "../lib/useQueryState";
 
 type SortKey = "date" | "sharpe";
 const fmt = (n: number | null) =>
   n === null || n === undefined ? "—" : n.toFixed(2);
 
 export default function Archive({ rows: rowsProp }: { rows?: ArchiveRow[] }) {
-  const [sort, setSort] = useState<SortKey>("date");
+  const [sortParam, setSort] = useQueryState("sort", "date");
+  const sort: SortKey = sortParam === "sharpe" ? "sharpe" : "date";
   const rows = (rowsProp ?? snapshot.archive)
     .map((row, index) => ({ ...row, rowKey: `${row.lane}-${row.slug}-${row.runAt ?? row.date}-${index}` }))
     .sort((a, b) => {
@@ -35,7 +36,7 @@ export default function Archive({ rows: rowsProp }: { rows?: ArchiveRow[] }) {
           RANK BY{" "}
           <select
             value={sort}
-            onChange={(e) => setSort(e.target.value as SortKey)}
+            onChange={(e) => setSort(e.target.value)}
             className="ml-2 border border-line bg-bg px-3 py-2 font-mono text-xs text-ink"
           >
             <option value="date">RUN DATE</option>

@@ -40,7 +40,7 @@ function CopyButton({ text, label }: { text: string; label: string }) {
 }
 
 export function SpecDetail({ slug }: { slug: string }) {
-  useDocumentTitle(`Spec: ${slug}`);
+  useDocumentTitle(`${slug} — Strategy Lab`);
   const spec = workspace.specs.find((s) => s.slug === slug);
   const code = spec?.hasCode
     ? "(generated code available in strategies/ — snapshot carries specs only)"
@@ -90,7 +90,12 @@ export function SpecDetail({ slug }: { slug: string }) {
         <summary className="cursor-pointer px-4 py-2 font-mono text-xs text-dim">
           specs/{slug}.yaml
         </summary>
-        <pre tabIndex={0} className="max-h-96 overflow-auto p-4 font-mono text-xs leading-relaxed text-ink/90">
+        <pre
+          tabIndex={0}
+          role="region"
+          aria-label="Strategy specification preview"
+          className="max-h-96 overflow-auto border border-line bg-surface/50 p-4 font-mono text-xs leading-relaxed text-ink/90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+        >
           {spec.raw}
         </pre>
       </details>
@@ -109,7 +114,7 @@ export default function Lab() {
       </p>
       {workspace.specs.length === 0 ? (
         <div className="mt-16">
-          <CliSnippet command="python3 extract.py && python3 codegen.py && uv run python scripts/web_snapshot.py" label="No specs yet — run extract.py on triaged ideas." />
+          <CliSnippet command="uv run python extract.py && uv run python codegen.py && uv run python scripts/web_snapshot.py" label="No specs yet — run extract.py on triaged ideas." />
         </div>
       ) : (
         <ol className="mt-8 border-t border-line">

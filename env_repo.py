@@ -21,8 +21,10 @@ recorded env key still matches (and whose venv is still on disk) is reported
 as reused, not rebuilt.
 
 Scope: this stage builds environments, it does not execute anything.  The
-legacy fallback is a *plan*, not an action: when #27's `run_external.py`
-catches a legacy pandas/numpy API break it calls
+legacy fallback is currently **unwired**: `run_external.py` does not import
+this module, so `plan_fallback`, `is_legacy_api_error`, and `LEGACY_PINS`
+have no production caller.  The planned contract, should a caller adopt it:
+when #27's `run_external.py` catches a legacy pandas/numpy API break it calls
 `plan_fallback(row, error_text)`; when that returns a dict, #27 builds the
 fallback env itself, reading the values out of the plan (they may be
 overrides, so never assume the module constants):
@@ -126,12 +128,26 @@ LEGACY_API_SIGNATURES = (
 
 
 def load(path: Path) -> list[dict]:
-    """Read a jsonl file into a list of dicts (missing file -> empty list)."""
+    """Read a jsonl file into a list of dicts (missing file -> empty list).
+
+    Torn or malformed lines are skipped so a stage advertising resumability
+    never crashes on a partial write.
+    """
     path = Path(path)
     if not path.exists():
         return []
-    return [json.loads(line) for line in path.read_text().splitlines()
-            if line.strip()]
+    rows: list[dict] = []
+    for line in path.read_text(errors="replace").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(row, dict):
+            rows.append(row)
+    return rows
 
 
 def save(path: Path, rows: list[dict]) -> None:

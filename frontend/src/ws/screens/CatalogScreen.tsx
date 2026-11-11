@@ -36,8 +36,10 @@ export default function CatalogScreen() {
           <button
             onClick={() =>
               exportToCsv("autoquant-catalog",
-                ["id", "title", "provider", "frequency", "tags"],
+                ["id", "title", "provider", "frequency", "coverage_start",
+                 "fallback", "license", "tags"],
                 rows.map(c => [c.id, c.title, c.provider, c.frequency,
+                               c.coverageStart, c.fallback, c.license,
                                c.tags.join(" ")]))}
             className="border border-line px-3 py-2 font-mono text-[11px] tracking-widest text-dim transition-colors hover:text-ink"
           >
@@ -56,7 +58,7 @@ export default function CatalogScreen() {
         workspace.catalog.length === 0 ? (
           <div className="mt-16">
             <CliSnippet
-              command="uv run python scripts/web_snapshot.py"
+              command="uv run python catalog.py fetch DGS10 && uv run python scripts/web_snapshot.py"
               label="Catalog is empty — regenerate the snapshot from catalog.json."
             />
           </div>

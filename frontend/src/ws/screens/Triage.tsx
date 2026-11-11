@@ -36,7 +36,7 @@ export default function Triage() {
         workspace.triage.length === 0 ? (
           <div className="mt-16">
             <CliSnippet
-              command="python3 triage.py && uv run python scripts/web_snapshot.py"
+              command="uv run python triage.py && uv run python scripts/web_snapshot.py"
               label="Nothing triaged yet — run the triage stage, then regenerate the snapshot."
             />
           </div>

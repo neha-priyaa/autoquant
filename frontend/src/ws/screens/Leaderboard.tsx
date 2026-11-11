@@ -92,6 +92,8 @@ export default function Leaderboard() {
     getSortedRowModel: getSortedRowModel(),
   });
 
+  const exportRows = table.getRowModel().rows.map((row) => row.original);
+
   return (
     <div>
       <h1 className="text-4xl font-light">Leaderboard</h1>
@@ -104,14 +106,14 @@ export default function Leaderboard() {
           <button
             onClick={() =>
               exportToCsv("autoquant-leaderboard",
-                ["slug", "lane", "status", "net_sharpe", "beats_null", "date"],
-                workspace.runs.map(r => [r.slug, r.lane, r.status, r.netSharpe, r.beatsNull, r.date]))}
+                ["slug", "status", "lane", "net_sharpe", "beats_null", "date"],
+                exportRows.map(r => [r.slug, r.status, r.lane, r.netSharpe, r.beatsNull, r.date]))}
             className="border border-line px-3 py-2 font-mono text-[11px] tracking-widest text-dim transition-colors hover:text-ink"
           >
             CSV
           </button>
           <button
-            onClick={() => exportToJson("autoquant-leaderboard", workspace.runs)}
+            onClick={() => exportToJson("autoquant-leaderboard", exportRows)}
             className="border border-line px-3 py-2 font-mono text-[11px] tracking-widest text-dim transition-colors hover:text-ink"
           >
             JSON

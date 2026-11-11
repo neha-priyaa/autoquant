@@ -6,7 +6,7 @@ import { workspace, newestRuns } from "../../content/workspace";
 import { useDocumentTitle } from "../../lib/useDocumentTitle";
 
 export default function Overview() {
-  useDocumentTitle("Overview");
+  useDocumentTitle("Research Overview");
   const c = snapshot.counts;
   const latest = newestRuns(workspace.runs).slice(0, 5);
   const stages = snapshot.stages;

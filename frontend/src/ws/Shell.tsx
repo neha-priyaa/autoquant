@@ -1,24 +1,10 @@
 import { NavLink, Outlet } from "react-router-dom";
 import {
-  ArrowLeft, BarChart3, Binary, BookOpen, Feather, FlaskConical, Glasses,
-  LayoutDashboard, Library, ListFilter, MessageSquare, Moon, Newspaper,
-  Sparkles, Square, Sun, Terminal, Trophy, Zap,
+  BarChart3, FlaskConical, LayoutDashboard, Library, ListFilter,
+  MessageSquare, Newspaper, Trophy,
 } from "lucide-react";
-import { useTheme, THEMES, type Theme } from "../lib/theme";
-
-const THEME_ICON: Record<Theme, typeof Moon> = {
-  dark: Moon,
-  light: Sun,
-  terminal: Terminal,
-  amber: Zap,
-  ivory: Feather,
-  noir: Sparkles,
-  brutal: Square,
-  zenburn: BookOpen,
-  matrix: Binary,
-  "cb-dark": Glasses,
-  "cb-light": Glasses,
-};
+import { THEMES, useTheme } from "../lib/theme";
+import WorkspaceControls from "../components/WorkspaceControls";
 
 const TABS = [
   { to: "/workspace", label: "Overview", icon: LayoutDashboard, end: true },
@@ -34,7 +20,14 @@ const TABS = [
 export default function Shell() {
   const { theme, setMode, cycleTheme } = useTheme();
   const mode = THEMES[theme].mode;
-  const ThemeIcon = THEME_ICON[theme];
+  const controls = (
+    <WorkspaceControls
+      theme={theme}
+      mode={mode}
+      onToggleMode={() => setMode(mode === "dark" ? "light" : "dark")}
+      onCycleTheme={cycleTheme}
+    />
+  );
   const tab = (t: (typeof TABS)[number], mobile = false) => (
     <NavLink
       key={t.to}
@@ -51,32 +44,6 @@ export default function Shell() {
       <t.icon className="h-4 w-4" />
       {t.label}
     </NavLink>
-  );
-
-  const controls = (
-    <>
-          <button
-            onClick={() => setMode(mode === "dark" ? "light" : "dark")}
-            aria-label={`Switch to ${mode === "dark" ? "light" : "dark"} mode`}
-            title={`mode: ${mode} — like your phone's dark mode`}
-            className="flex items-center gap-3 px-2 py-2 text-sm text-dim transition-colors hover:text-ink"
-          >
-            {mode === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-            {mode === "dark" ? "Light mode" : "Dark mode"}
-          </button>
-          <button
-            onClick={cycleTheme}
-            aria-label={`Cycle skin (current: ${theme})`}
-            title={`skin: ${theme} — click to cycle`}
-            className="flex items-center gap-3 px-2 py-2 text-sm text-dim transition-colors hover:text-ink"
-          >
-            <ThemeIcon className="h-4 w-4" />
-            <span className="capitalize">{theme} skin</span>
-          </button>
-          <NavLink to="/" className="flex items-center gap-3 px-2 py-2 text-sm text-dim transition-colors hover:text-ink">
-            <ArrowLeft className="h-4 w-4" /> Landing
-          </NavLink>
-    </>
   );
 
   return (

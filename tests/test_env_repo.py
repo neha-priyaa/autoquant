@@ -526,6 +526,12 @@ class TestMainWith:
         env_repo.main_with([], root=tmp_path)
         assert len(env_repo.load(env_repo.ENVS)) == 1
 
+    def test_load_skips_torn_and_non_object_lines(self, tmp_path):
+        """#34: one torn line must not crash a stage advertising resumability."""
+        path = tmp_path / "repo_envs.jsonl"
+        path.write_text('{"repo": "a"}\n\n{"torn\n[1, 2]\n{"repo": "b"}\n')
+        assert env_repo.load(path) == [{"repo": "a"}, {"repo": "b"}]
+
 
 class TestUvLockInvariant:
     def test_uv_lock_is_untouched_by_a_build(self, tmp_path, monkeypatch):

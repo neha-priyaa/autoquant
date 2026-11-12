@@ -774,7 +774,7 @@ class TestRunUvErrors:
         )
 
         with pytest.raises(RuntimeError, match="uv timed out"):
-            env_repo.run_uv([sys.executable, "-c", wrapper, str(child_pid)], timeout=0.1)
+            env_repo.run_uv([sys.executable, "-c", wrapper, str(child_pid)], timeout=1.0)
 
         deadline = time.monotonic() + 2
         while time.monotonic() < deadline:

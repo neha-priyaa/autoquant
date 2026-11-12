@@ -1,8 +1,12 @@
 import { Link } from "react-router-dom";
 import { StatusDot } from "../../components/StatusDot";
+import CliSnippet from "../../components/CliSnippet";
+import TableScrollWrapper from "../../components/TableScrollWrapper";
 import { workspace, newestRuns } from "../../content/workspace";
+import { useDocumentTitle } from "../../lib/useDocumentTitle";
 
 export function BacktestDetail({ slug }: { slug: string }) {
+  useDocumentTitle(`${slug} — Backtest Report`);
   const report = workspace.reports[slug];
   const run = newestRuns(workspace.runs).find((r) => r.slug === slug && r.lane === "article");
   if (!report && !run) {
@@ -32,7 +36,8 @@ export function BacktestDetail({ slug }: { slug: string }) {
       {report && (
         <>
           <p className="mt-6 text-sm text-dim">Latest report for this strategy. Historical report versions are not retained.</p>
-          <div className="mt-8 overflow-x-auto border border-line">
+          <div className="mt-8 border border-line">
+            <TableScrollWrapper>
             <table className="w-full text-left font-mono text-sm">
               <thead>
                 <tr className="border-b border-line text-[11px] uppercase tracking-widest text-dim">
@@ -51,12 +56,18 @@ export function BacktestDetail({ slug }: { slug: string }) {
                 ))}
               </tbody>
             </table>
+            </TableScrollWrapper>
           </div>
           <details className="mt-6 border border-line" open>
             <summary className="cursor-pointer px-4 py-2 font-mono text-xs text-dim">
               full report — reports/{slug}.md
             </summary>
-            <pre className="max-h-[32rem] overflow-auto p-4 font-mono text-xs leading-relaxed text-ink/90">
+            <pre
+              tabIndex={0}
+              role="region"
+              aria-label="Backtest report preview"
+              className="max-h-[32rem] overflow-auto border border-line bg-surface/50 p-4 font-mono text-xs leading-relaxed text-ink/90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+            >
               {report.text}
             </pre>
           </details>
@@ -73,14 +84,15 @@ export function BacktestDetail({ slug }: { slug: string }) {
 }
 
 export default function Backtests() {
+  useDocumentTitle("Backtests");
   const runs = newestRuns(workspace.runs);
   return (
     <div>
       <h1 className="text-4xl font-light">Backtests</h1>
       {runs.length === 0 ? (
-        <p className="mt-16 border border-dashed border-line p-12 text-center text-dim">
-          No runs yet — backtest_batch.py writes the leaderboard and reports.
-        </p>
+        <div className="mt-16">
+          <CliSnippet command="uv run python backtest_batch.py && uv run python scripts/web_snapshot.py" description="No runs yet — backtest_batch.py writes the leaderboard and reports." />
+        </div>
       ) : (
         <ol className="mt-8 border-t border-line">
           {runs.map((r, index) => (

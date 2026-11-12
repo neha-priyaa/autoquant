@@ -1,12 +1,16 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Copy, Check } from "lucide-react";
 import { StatusDot } from "../../components/StatusDot";
 import { workspace } from "../../content/workspace";
+import { useDocumentTitle } from "../../lib/useDocumentTitle";
+import CliSnippet from "../../components/CliSnippet";
 
 function CopyButton({ text, label }: { text: string; label: string }) {
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const resetTimer = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => () => clearTimeout(resetTimer.current), []);
   async function copy(): Promise<void> {
     setError(null);
     setDone(false);
@@ -17,7 +21,7 @@ function CopyButton({ text, label }: { text: string; label: string }) {
     try {
       await navigator.clipboard.writeText(text);
       setDone(true);
-      setTimeout(() => setDone(false), 1500);
+      resetTimer.current = setTimeout(() => setDone(false), 1500);
     } catch {
       setError("Could not copy. Allow clipboard access or copy from the YAML preview.");
     }
@@ -38,6 +42,7 @@ function CopyButton({ text, label }: { text: string; label: string }) {
 }
 
 export function SpecDetail({ slug }: { slug: string }) {
+  useDocumentTitle(`${slug} — Strategy Lab`);
   const spec = workspace.specs.find((s) => s.slug === slug);
   const code = spec?.hasCode
     ? "(generated code available in strategies/ — snapshot carries specs only)"
@@ -83,11 +88,16 @@ export function SpecDetail({ slug }: { slug: string }) {
         ) : <CopyButton text={spec.raw} label="spec YAML" />}
       </div>
 
-      <details className="mt-6 border border-line">
+      <details className="mt-6 border border-line" open>
         <summary className="cursor-pointer px-4 py-2 font-mono text-xs text-dim">
           specs/{slug}.yaml
         </summary>
-        <pre className="max-h-96 overflow-auto p-4 font-mono text-xs leading-relaxed text-ink/90">
+        <pre
+          tabIndex={0}
+          role="region"
+          aria-label="Strategy specification preview"
+          className="max-h-[32rem] overflow-auto border border-line bg-surface/50 p-4 font-mono text-xs leading-relaxed text-ink/90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+        >
           {spec.raw}
         </pre>
       </details>
@@ -97,6 +107,7 @@ export function SpecDetail({ slug }: { slug: string }) {
 }
 
 export default function Lab() {
+  useDocumentTitle("Strategy Lab");
   return (
     <div>
       <h1 className="text-4xl font-light">Strategy Lab</h1>
@@ -104,9 +115,9 @@ export default function Lab() {
         Explicit specifications — universe, signal, rules, costs — before any code exists.
       </p>
       {workspace.specs.length === 0 ? (
-        <p className="mt-16 border border-dashed border-line p-12 text-center text-dim">
-          No specs yet — run extract.py on triaged ideas.
-        </p>
+        <div className="mt-16">
+          <CliSnippet command="uv run python extract.py && uv run python codegen.py && uv run python scripts/web_snapshot.py" description="No specs yet — run extract.py on triaged ideas." />
+        </div>
       ) : (
         <ol className="mt-8 border-t border-line">
           {workspace.specs.map((s) => (

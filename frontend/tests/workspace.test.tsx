@@ -1,6 +1,6 @@
 import { render, screen, fireEvent, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import Feed from "../src/ws/screens/Feed";
 import Triage from "../src/ws/screens/Triage";
 import Leaderboard from "../src/ws/screens/Leaderboard";
@@ -10,6 +10,12 @@ import CatalogScreen from "../src/ws/screens/CatalogScreen";
 import { loadWorkspace } from "../src/content/workspace";
 import type { RunRow } from "../src/content/workspace";
 import { snapshot } from "../src/content/snapshot";
+
+const exportSpy = vi.hoisted(() => ({ csv: vi.fn(), json: vi.fn() }));
+vi.mock("../src/lib/export", () => ({
+  exportToCsv: exportSpy.csv,
+  exportToJson: exportSpy.json,
+}));
 
 const W = vi.hoisted(() => ({
   articles: [
@@ -53,6 +59,39 @@ vi.mock("../src/content/workspace", async (importOriginal) => {
   return { ...orig, workspace: W };
 });
 
+function SearchProbe() {
+  return <output aria-label="search">{useLocation().search}</output>;
+}
+
+describe("URL writes (#40)", () => {
+  it("writes the Feed search, stage and source to the URL, and removes defaults", async () => {
+    render(<MemoryRouter><Feed /><SearchProbe /></MemoryRouter>);
+    await userEvent.type(screen.getByLabelText("Search articles"), "alpha");
+    expect(screen.getByLabelText("search")).toHaveTextContent("?q=alpha");
+    await userEvent.selectOptions(screen.getByLabelText("Source filter"), "S1");
+    expect(screen.getByLabelText("search")).toHaveTextContent("source=S1");
+    await userEvent.clear(screen.getByLabelText("Search articles"));
+    expect(screen.getByLabelText("search")).not.toHaveTextContent("q=");
+  });
+
+  it("writes the Triage minimum score to the URL and removes it at the default", async () => {
+    render(<MemoryRouter><Triage /><SearchProbe /></MemoryRouter>);
+    fireEvent.change(screen.getByLabelText("Minimum triage score"), { target: { value: "3" } });
+    expect(screen.getByLabelText("search")).toHaveTextContent("?minScore=3");
+    fireEvent.change(screen.getByLabelText("Minimum triage score"), { target: { value: "0" } });
+    expect(screen.getByLabelText("search").textContent).toBe("");
+  });
+
+  it("writes the Catalog search to the URL and removes it when cleared", async () => {
+    render(<MemoryRouter><CatalogScreen /><SearchProbe /></MemoryRouter>);
+    const search = screen.getByRole("textbox", { name: "Search catalog" });
+    await userEvent.type(search, "spy");
+    expect(screen.getByLabelText("search")).toHaveTextContent("?q=spy");
+    await userEvent.clear(search);
+    expect(screen.getByLabelText("search")).not.toHaveTextContent("q=");
+  });
+});
+
 describe("Feed", () => {
   it("searches by title", async () => {
     render(<MemoryRouter><Feed /></MemoryRouter>);
@@ -62,11 +101,52 @@ describe("Feed", () => {
     expect(screen.queryByText("Other piece")).not.toBeInTheDocument();
     expect(screen.getByText("Alpha article")).toBeInTheDocument();
   });
+
+  it("initializes the source filter from the URL (#40)", () => {
+    render(
+      <MemoryRouter initialEntries={["/?source=S1"]}>
+        <Feed />
+      </MemoryRouter>,
+    );
+    expect(screen.getByLabelText("Source filter")).toHaveValue("S1");
+    expect(screen.getByText("Alpha article")).toBeInTheDocument();
+    expect(screen.queryByText("Other piece")).not.toBeInTheDocument();
+  });
+
+  it("shows a runnable command when the pipeline has no articles (#41)", () => {
+    const articles = W.articles.splice(0);
+    try {
+      render(<MemoryRouter><Feed /></MemoryRouter>);
+      expect(screen.getByText(/No articles yet/)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Copy command/ })).toBeInTheDocument();
+    } finally {
+      W.articles.push(...articles);
+    }
+  });
 });
 
 describe("Triage", () => {
+  it("initializes the minimum score from the URL (#40)", () => {
+    render(
+      <MemoryRouter initialEntries={["/?minScore=5"]}>
+        <Triage />
+      </MemoryRouter>,
+    );
+    expect(screen.getByLabelText("Minimum triage score")).toHaveValue("5");
+    expect(screen.getAllByText(/\/5/).length).toBe(1);
+  });
+
+  it("clamps an out-of-range minimum score from the URL (#40)", () => {
+    render(
+      <MemoryRouter initialEntries={["/?minScore=99"]}>
+        <Triage />
+      </MemoryRouter>,
+    );
+    expect(screen.getByLabelText("Minimum triage score")).toHaveValue("5");
+    expect(screen.getByText("MIN SCORE 5")).toBeInTheDocument();
+  });
   it("filters by minimum score", () => {
-    render(<Triage />);
+    render(<MemoryRouter><Triage /></MemoryRouter>);
     expect(screen.getByLabelText("Minimum triage score")).toHaveAttribute("max", "5");
     expect(screen.getAllByText(/\/5/).length).toBe(2);
     fireEvent.change(screen.getByLabelText("Minimum triage score"), {
@@ -80,7 +160,7 @@ describe("Triage", () => {
     const scores = W.triage.map((row) => row.score);
     W.triage.forEach((row) => { row.score = 2; });
     try {
-      render(<Triage />);
+      render(<MemoryRouter><Triage /></MemoryRouter>);
       fireEvent.change(screen.getByLabelText("Minimum triage score"), { target: { value: "5" } });
       expect(screen.getByText(/No ideas match/)).toBeInTheDocument();
       expect(screen.queryByText(/Nothing triaged yet/)).not.toBeInTheDocument();
@@ -94,7 +174,7 @@ describe("Leaderboard", () => {
   const slugs = () => screen.getAllByRole("row").slice(1).map(
     (row) => within(row).getAllByRole("cell")[1].textContent);
   it("keeps missing measurements last in both directions", async () => {
-    render(<Leaderboard />);
+    render(<MemoryRouter><Leaderboard /></MemoryRouter>);
     expect(slugs()).toEqual(["s1", "negative", "nb1"]);
     await userEvent.click(screen.getByRole("button", { name: "Sort by netSharpe" }));
     expect(slugs()).toEqual(["negative", "s1", "nb1"]);
@@ -104,12 +184,23 @@ describe("Leaderboard", () => {
     expect(slugs().at(-1)).toBe("nb1");
   });
   it("renders both lanes and sorts", async () => {
-    render(<Leaderboard />);
+    render(<MemoryRouter><Leaderboard /></MemoryRouter>);
     expect(screen.getByText("s1")).toBeInTheDocument();
     expect(screen.getByText("nb1")).toBeInTheDocument();
     const sortBtns = screen.getAllByRole("button", { name: /sort by/i });
     await userEvent.click(sortBtns.find((b) => b.getAttribute("aria-label") === "Sort by slug")!);
     expect(screen.getAllByText(/^(s1|nb1)$/)[0].textContent).toBe("nb1");
+  });
+
+  it("exports the rows in the active sort order (#42)", async () => {
+    exportSpy.csv.mockClear();
+    render(<MemoryRouter><Leaderboard /></MemoryRouter>);
+    await userEvent.click(screen.getByRole("button", { name: "Export CSV" }));
+    const [, headers, rows] = exportSpy.csv.mock.calls[0];
+    expect(headers).toEqual(["Slug", "Status", "Lane", "Net Sharpe",
+                             "Beats Null", "Run Date"]);
+    expect(rows.map((row: unknown[]) => row[0]))
+      .toEqual(["s1", "negative", "nb1"]);
   });
 });
 
@@ -178,7 +269,7 @@ describe("loadWorkspace", () => {
 
 describe("Catalog", () => {
   it("distinguishes a search with no matches and restores results on clear", async () => {
-    render(<CatalogScreen />);
+    render(<MemoryRouter><CatalogScreen /></MemoryRouter>);
     const search = screen.getByRole("textbox", { name: "Search catalog" });
     await userEvent.type(search, "no-such-series");
     expect(screen.getByText("No series match your search.")).toBeInTheDocument();
@@ -187,13 +278,29 @@ describe("Catalog", () => {
     expect(screen.getByText("yahoo:SPY")).toBeInTheDocument();
   });
 
+  it("initializes the search from the URL (#40)", () => {
+    render(<MemoryRouter initialEntries={["/workspace/catalog?q=fred"]}><CatalogScreen /></MemoryRouter>);
+    expect(screen.getByRole("textbox", { name: "Search catalog" })).toHaveValue("fred");
+  });
+
   it("keeps the missing-artifact guidance for a genuinely empty catalog", () => {
     const catalog = W.catalog.splice(0);
     try {
-      render(<CatalogScreen />);
+      render(<MemoryRouter><CatalogScreen /></MemoryRouter>);
       expect(screen.getByText(/Catalog is empty/)).toBeInTheDocument();
     } finally {
       W.catalog.push(...catalog);
     }
+  });
+
+  it("exports coverage, fallback, and license columns (#42)", async () => {
+    exportSpy.csv.mockClear();
+    render(<MemoryRouter><CatalogScreen /></MemoryRouter>);
+    await userEvent.click(screen.getByRole("button", { name: "Export CSV" }));
+    const [, headers, rows] = exportSpy.csv.mock.calls[0];
+    expect(headers).toEqual(["ID", "Title", "Provider", "Frequency",
+                             "Coverage Start", "Fallback", "License", "Tags"]);
+    expect(rows[0]).toEqual(["yahoo:SPY", "S&P", "yahoo", "daily",
+                             "1993-01-29", null, null, "etf"]);
   });
 });

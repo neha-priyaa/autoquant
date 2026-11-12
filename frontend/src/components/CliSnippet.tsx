@@ -1,0 +1,53 @@
+import { useEffect, useRef, useState } from "react";
+import { Check, Copy } from "lucide-react";
+
+/** Runnable terminal command shown in empty states, one-click copyable. */
+export default function CliSnippet({ command, description }: { command: string; description?: string }) {
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [unavailable, setUnavailable] = useState(false);
+  const resetTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(resetTimer.current), []);
+  async function copy(): Promise<void> {
+    setError(null);
+    setUnavailable(false);
+    setDone(false);
+    if (!navigator.clipboard?.writeText) {
+      setUnavailable(true);
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(command);
+      setDone(true);
+      clearTimeout(resetTimer.current);
+      resetTimer.current = setTimeout(() => setDone(false), 1500);
+    } catch {
+      setError("Could not copy. Allow clipboard access or copy the command manually.");
+    }
+  }
+  return (
+    <div className="mx-auto max-w-xl text-center">
+      {description && <p className="text-sm text-dim">{description}</p>}
+      <div className="mt-3 flex items-center justify-between gap-3 border border-line bg-bg px-4 py-2.5">
+        <code className="min-w-0 overflow-x-auto whitespace-nowrap font-mono text-xs text-ink">
+          {command}
+        </code>
+        <button
+          aria-label={`Copy command: ${command}`}
+          onClick={copy}
+          className="shrink-0 text-dim transition-colors hover:text-accent"
+        >
+          {done ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+        </button>
+      </div>
+      <p role="status" className="mt-2 min-h-4 font-mono text-xs text-dim">
+        {unavailable ? "Clipboard unavailable" : done ? "Copied" : ""}
+      </p>
+      {error && (
+        <p role="alert" className="mt-2 font-mono text-xs text-dim">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}

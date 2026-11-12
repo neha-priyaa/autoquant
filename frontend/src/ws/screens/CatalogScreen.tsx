@@ -1,8 +1,13 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { workspace } from "../../content/workspace";
+import { useDocumentTitle } from "../../lib/useDocumentTitle";
+import { useQueryState } from "../../lib/useQueryState";
+import { exportToCsv, exportToJson } from "../../lib/export";
+import CliSnippet from "../../components/CliSnippet";
 
 export default function CatalogScreen() {
-  const [q, setQ] = useState("");
+  useDocumentTitle("Data Catalog");
+  const [q, setQ] = useQueryState("q", "");
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
     if (!needle) return workspace.catalog;
@@ -24,17 +29,44 @@ export default function CatalogScreen() {
           aria-label="Search catalog"
           className="w-72 border border-line bg-bg px-3 py-2 font-mono text-sm text-ink placeholder:text-dim/60"
         />
-        <span className="ml-auto font-mono text-xs text-dim">
-          {rows.length} / {workspace.catalogCount} SERIES
+        <span className="ml-auto flex items-center gap-3">
+          <span className="font-mono text-xs text-dim">
+            {rows.length} / {workspace.catalogCount} SERIES
+          </span>
+          <button
+            onClick={() =>
+              exportToCsv("autoquant-catalog",
+                ["ID", "Title", "Provider", "Frequency", "Coverage Start",
+                 "Fallback", "License", "Tags"],
+                rows.map(c => [c.id, c.title, c.provider, c.frequency,
+                               c.coverageStart, c.fallback, c.license,
+                               c.tags.join(" ")]))}
+            className="border border-line px-3 py-2 font-mono text-[11px] tracking-widest text-dim transition-colors hover:text-ink"
+          >
+            Export CSV
+          </button>
+          <button
+            onClick={() => exportToJson("autoquant-catalog", rows)}
+            className="border border-line px-3 py-2 font-mono text-[11px] tracking-widest text-dim transition-colors hover:text-ink"
+          >
+            Export JSON
+          </button>
         </span>
       </div>
 
       {rows.length === 0 ? (
-        <p className="mt-16 border border-dashed border-line p-12 text-center text-dim">
-          {workspace.catalog.length === 0
-            ? "Catalog is empty — regenerate the snapshot (catalog.json at the repo root)."
-            : "No series match your search."}
-        </p>
+        workspace.catalog.length === 0 ? (
+          <div className="mt-16">
+            <CliSnippet
+              command="uv run python catalog.py fetch DGS10 && uv run python scripts/web_snapshot.py"
+              description="Catalog is empty — regenerate the snapshot from catalog.json."
+            />
+          </div>
+        ) : (
+          <p className="mt-16 border border-dashed border-line p-12 text-center text-dim">
+            No series match your search.
+          </p>
+        )
       ) : (
         <ol className="mt-8 border-t border-line">
           {rows.map((c) => (

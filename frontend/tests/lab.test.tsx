@@ -20,6 +20,22 @@ it("offers copy for a complete specification", () => {
   expect(screen.getByRole("button", { name: "Copy spec YAML" })).toBeInTheDocument();
 });
 
+it("exposes the YAML preview as a focusable region (#43)", () => {
+  render(<SpecDetail slug="example" />);
+  const pre = screen.getByRole("region", { name: "Strategy specification preview" });
+  expect(pre).toHaveAttribute("tabindex", "0");
+});
+
+it("shows the YAML preview without an extra click so keyboard users can reach it (#43)", () => {
+  render(<SpecDetail slug="example" />);
+  expect(screen.getByRole("region", { name: "Strategy specification preview" })).toBeVisible();
+});
+
+it("labels the detail with the slug and section (#44)", () => {
+  render(<SpecDetail slug="example" />);
+  expect(document.title).toBe("example — Strategy Lab — AutoQuant");
+});
+
 it("labels legacy truncated YAML and does not offer it as a complete copy", () => {
   spec.raw = "meta: …";
   render(<SpecDetail slug="example" />);

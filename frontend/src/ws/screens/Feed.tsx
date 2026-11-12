@@ -1,23 +1,35 @@
 import { useMemo, useState } from "react";
 import { workspace, type Article } from "../../content/workspace";
+import { useDocumentTitle } from "../../lib/useDocumentTitle";
+import { useQueryState } from "../../lib/useQueryState";
 import { httpUrl } from "../../content/urls";
+import CliSnippet from "../../components/CliSnippet";
 
 const STAGES = ["all", "discovered", "fetched", "triaged", "processed"];
 
 export default function Feed() {
-  const [q, setQ] = useState("");
-  const [stage, setStage] = useState("all");
+  useDocumentTitle("Research Feed");
+  const [q, setQ] = useQueryState("q", "");
+  const [stage, setStage] = useQueryState("stage", "all");
+  const [source, setSource] = useQueryState("source", "all");
   const [open, setOpen] = useState<Article | null>(null);
+  const sources = useMemo(
+    () => [...new Set(workspace.articles
+      .map((a) => a.source)
+      .filter((s): s is string => !!s))].sort(),
+    [],
+  );
 
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return workspace.articles.filter(
       (a) =>
         (stage === "all" || (a.stage ?? "").includes(stage)) &&
+        (source === "all" || a.source === source) &&
         (!needle ||
           `${a.title} ${a.source} ${a.slug}`.toLowerCase().includes(needle)),
     );
-  }, [q, stage]);
+  }, [q, stage, source]);
 
   return (
     <div>
@@ -40,13 +52,34 @@ export default function Feed() {
             </button>
           ))}
         </div>
+        <label className="font-mono text-xs text-dim">
+          SOURCE{" "}
+          <select
+            value={source}
+            onChange={(e) => setSource(e.target.value)}
+            aria-label="Source filter"
+            className="ml-2 border border-line bg-bg px-3 py-2 font-mono text-xs text-ink"
+          >
+            <option value="all">ALL</option>
+            {sources.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </label>
         <span className="ml-auto font-mono text-xs text-dim">{rows.length} ARTICLES</span>
       </div>
 
       {rows.length === 0 ? (
-        <p className="mt-16 border border-dashed border-line p-12 text-center text-dim">
-          No articles match — run harvest.py, then regenerate the snapshot.
-        </p>
+        workspace.articles.length === 0 ? (
+          <div className="mt-16">
+            <CliSnippet
+              command="uv run python harvest.py && uv run python scripts/web_snapshot.py"
+              description="No articles yet — run harvest.py, then regenerate the snapshot."
+            />
+          </div>
+        ) : (
+          <p className="mt-16 border border-dashed border-line p-12 text-center text-dim">
+            No articles match — clear the search or filters.
+          </p>
+        )
       ) : (
         <ol className="mt-8 border-t border-line">
           {rows.map((a, index) => {

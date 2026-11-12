@@ -14,8 +14,9 @@ describe("bootstrap", () => {
     expect(screen.getByRole("contentinfo")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("link", { name: /open workspace/i }));
     // workspace screens are lazy chunks — wait for the chunk to load
-    await waitFor(() => expect(screen.getByText("Research Overview")).toBeInTheDocument());
-    expect(document.title).toBe("Research Overview — AutoQuant");
+    await waitFor(() => expect(screen.getByText("Research Overview")).toBeInTheDocument(), { timeout: 5000 });
+    // the title effect runs after the DOM text appears, so wait for it too
+    await waitFor(() => expect(document.title).toBe("Research Overview — AutoQuant"));
     expect(screen.queryByRole("banner")).not.toBeInTheDocument();
     expect(screen.queryByRole("contentinfo")).not.toBeInTheDocument();
     await userEvent.click(within(screen.getByRole("navigation", { name: "Workspace controls" })).getByRole("link", { name: /landing/i }));

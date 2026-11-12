@@ -704,16 +704,6 @@ def _walk(root: Path, specs: list[str], strict: bool) -> list[tuple]:
     return out
 
 
-def repo_manifests(root: Path, specs: list[str]) -> list[tuple[Path, dict, str]]:
-    """Locate (dest, manifest, label) for every repo to build an env for.
-
-    Raises ValueError for a malformed spec or a missing manifest, and
-    json.JSONDecodeError for a corrupt manifest.
-    """
-    return [(dest, manifest, label)
-            for dest, manifest, label, _err in _walk(root, specs, strict=True)]
-
-
 def _reusable(prev: dict | None, state: dict, root: Path) -> bool:
     """True when the recorded env still matches what the repo needs now.
 

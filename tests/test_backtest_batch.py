@@ -249,3 +249,22 @@ class TestRecordFailureDedupe:
         rows = [json.loads(line) for line in path.read_text().splitlines()
                 if line.strip().startswith("{")]
         assert len(rows) == 1 and rows[0]["error"] == "new"
+
+
+class TestAtomicRewrite:
+    def test_failed_rewrite_leaves_original_intact(self, tmp_path, monkeypatch):
+        path = tmp_path / "results" / "failed.jsonl"
+        path.parent.mkdir(parents=True)
+        backtest_batch.record_failure({"spec": "s.yaml", "error": "old"}, path)
+        original = path.read_text()
+
+        import os
+        real_replace = os.replace
+        monkeypatch.setattr(backtest_batch.os, "replace",
+                            lambda *a, **k: (_ for _ in ()).throw(OSError("interrupted")))
+        try:
+            backtest_batch.record_failure({"spec": "s.yaml", "error": "new"}, path)
+        except OSError:
+            pass
+        assert path.read_text() == original  # nothing lost
+        monkeypatch.setattr(backtest_batch.os, "replace", real_replace)

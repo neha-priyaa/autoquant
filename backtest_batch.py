@@ -105,10 +105,12 @@ def record_failure(result: dict, path: Path) -> None:
             except json.JSONDecodeError:
                 pass
             prior.append(line)
-    with path.open("w") as fh:
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    with tmp.open("w") as fh:
         for line in prior:
             fh.write(line + "\n")
         fh.write(json.dumps(result) + "\n")
+    os.replace(tmp, path)
 
 
 def main_with(argv: list[str] | None = None) -> int:

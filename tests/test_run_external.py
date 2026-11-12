@@ -425,6 +425,21 @@ class TestRunCopy:
         src = make_repo(tmp_path, files={"a.txt": "x", "sub/b.txt": "y"})
         assert run_external._file_set(src) == {"a.txt", "sub/b.txt"}
 
+    def test_copy_produced_skips_pycache_pyc_and_symlinks(self, tmp_path):
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        (run_dir / "out.txt").write_text("x")
+        (run_dir / "__pycache__").mkdir()
+        (run_dir / "__pycache__" / "m.pyc").write_text("x")
+        (run_dir / "junk.pyc").write_text("x")
+        target = tmp_path / "target.txt"
+        target.write_text("secret")
+        (run_dir / "link.txt").symlink_to(target)
+        out = tmp_path / "out"
+        assert run_external._copy_produced(run_dir, set(), out) == ["out.txt"]
+        assert not (out / "link.txt").exists()
+        assert not (out / "junk.pyc").exists()
+
 
 # --------------------------------------------------------- stage 3: the batch
 
@@ -636,6 +651,49 @@ class TestMain:
         monkeypatch.setattr(run_external, "_launch", make_launcher(calls))
         run_external.main_with([], root=tmp_path)
         assert "AUTOQUANT_CATALOG_DIR" not in calls[0]["env"]
+
+    def test_select_env_exception_becomes_an_error_row(self, tmp_path,
+                                                       monkeypatch):
+        """#34/3: a guard outside the per-artifact try must not kill the batch."""
+        self._repo(tmp_path)
+
+        def boom(*args, **kwargs):
+            raise RuntimeError("env exploded")
+
+        monkeypatch.setattr(run_external, "select_env", boom)
+        assert run_external.main_with([], root=tmp_path) == 0
+        row = json.loads(
+            (tmp_path / "results" / "external" / "leaderboard.jsonl")
+            .read_text().splitlines()[0])
+        assert row["verdict"] == "error"
+        assert "env exploded" in row["reason"]
+
+    def test_worker_exception_becomes_an_error_row(self, tmp_path, monkeypatch):
+        """#34/3: an exception escaping run_artifact must not tear down the pool."""
+        self._repo(tmp_path)
+
+        def boom(*args, **kwargs):
+            raise RuntimeError("worker exploded")
+
+        monkeypatch.setattr(run_external, "run_artifact", boom)
+        assert run_external.main_with([], root=tmp_path) == 0
+        row = json.loads(
+            (tmp_path / "results" / "external" / "leaderboard.jsonl")
+            .read_text().splitlines()[0])
+        assert row["verdict"] == "error"
+        assert row["artifact_key"] == "owner/name|notebook|nb.ipynb"
+        assert "worker exploded" in row["reason"]
+
+    def test_duplicate_artifact_keys_run_once(self, tmp_path, monkeypatch):
+        """#34: duplicate keys share a run dir, so only one may be scheduled."""
+        make_repo(tmp_path, files={"a.py": "print('a')\n"})
+        write_triage(tmp_path, [triage_row(kind="script", path="a.py"),
+                                triage_row(kind="script", path="a.py")])
+        calls: list = []
+        monkeypatch.setattr(run_external, "_launch", make_launcher(calls))
+        run_external.main_with([], root=tmp_path)
+        rows = (tmp_path / "results" / "external" / "leaderboard.jsonl")
+        assert len(rows.read_text().splitlines()) == 1
 
 
 # --------------------------------------------------------- stage 4: promotion
@@ -914,6 +972,27 @@ class TestJsonlHelpers:
         rows = [json.loads(line) for line in path.read_text().splitlines()]
         assert [r["artifact_key"] for r in rows] == ["a|b|c", "d|e|f"]
 
+    def test_record_failure_replaces_prior_row_for_same_key(self, tmp_path):
+        """#34: retries must not grow failed.jsonl without bound."""
+        path = tmp_path / "failed.jsonl"
+        run_external.record_failure({"artifact_key": "a|b|c", "error": "old"}, path)
+        run_external.record_failure({"artifact_key": "a|b|c", "error": "new"}, path)
+        rows = [json.loads(line) for line in path.read_text().splitlines()]
+        assert len(rows) == 1
+        assert rows[0]["error"] == "new"
+
+    def test_failed_rewrite_leaves_original_intact(self, tmp_path, monkeypatch):
+        path = tmp_path / "failed.jsonl"
+        run_external.record_failure({"artifact_key": "a", "error": "old"}, path)
+        original = path.read_text()
+        monkeypatch.setattr(
+            run_external.os, "replace",
+            lambda *a, **k: (_ for _ in ()).throw(OSError("interrupted")))
+        with pytest.raises(OSError):
+            run_external.record_failure({"artifact_key": "a", "error": "new"},
+                                        path)
+        assert path.read_text() == original
+
     def test_latest_by_key_keeps_the_last_row_per_key(self):
         rows = [{"artifact_key": "a", "verdict": "skip"},
                 {"artifact_key": "a", "verdict": "ok"},
@@ -1075,7 +1154,7 @@ class TestSelectEnv:
         res = run_external.select_env(triage_row(verdict="NEEDS_HEAVY_ENV"),
                                       {"owner/name": row}, layout)
         assert res["run"] is True
-        assert res["python"] == ["uv", "run", "python"]
+        assert res["python"] == ["uv", "run", "--no-project", "python"]
 
     def test_spec_artifact_is_not_executed(self, tmp_path):
         layout = self._layout(tmp_path)

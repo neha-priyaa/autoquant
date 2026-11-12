@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """External execution harness + external leaderboard + promotion (#27).
 
-Stage [3c] of the external strategy-repo lane (#22).  A repo scored by
+Stage [3e] of the external strategy-repo lane (#22).  A repo scored by
 ``triage_repo.py`` (``data/repo_triage.jsonl``) is turned here into
 
 * **executed artifacts** -- every notebook/script runs in its own subprocess,
@@ -172,10 +172,23 @@ def already_run(leaderboard: Path) -> set[str]:
 
 
 def record_failure(row: dict, path: Path) -> None:
-    """Append one failure row to the failed log."""
+    """Record one failure, replacing any prior row for the same artifact.
+
+    Retries used to append a new row every run, so ``failed.jsonl`` grew
+    without bound. Keep the latest row per ``artifact_key`` -- the same
+    logical view as ``latest_by_key`` -- and rewrite atomically so an
+    interrupted write leaves the previous log intact.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a") as fh:
-        fh.write(json.dumps(row) + "\n")
+    key = row.get("artifact_key")
+    prior = [r for r in load_jsonl(path)
+             if not (key and r.get("artifact_key") == key)]
+    prior.append(row)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    with tmp.open("w") as fh:
+        for r in prior:
+            fh.write(json.dumps(r) + "\n")
+    os.replace(tmp, path)
 
 
 def append_row(row: dict, path: Path) -> None:
@@ -197,7 +210,9 @@ def append_row(row: dict, path: Path) -> None:
                 and previous.get("verdict") == row.get("verdict")
                 and previous.get("reason") == row.get("reason")):
             return                      # the logical verdict is unchanged
-    record_failure(row, path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a") as fh:
+        fh.write(json.dumps(row) + "\n")
 
 
 # ------------------------------------------------------------------- keys
@@ -242,7 +257,7 @@ def interpreter(env_row: dict, layout: Layout) -> list[str]:
     venv = env_row.get("venv")
     if mode in ("repo-venv", "legacy-fallback") and venv:
         return [str(layout.root / venv / "bin" / "python")]
-    return ["uv", "run", "python"]
+    return ["uv", "run", "--no-project", "python"]
 
 
 def env_rows_by_repo(path: Path) -> dict[str, dict]:
@@ -358,7 +373,7 @@ def select_env(row: dict, env_rows: dict[str, dict],
                 "env_id": env_row.get("env_key") or "main",
                 "data_mode": data_mode, "python": interpreter(env_row, layout)}
     return {"run": True, "reason": "", "env": env, "env_id": "main",
-            "data_mode": data_mode, "python": ["uv", "run", "python"]}
+            "data_mode": data_mode, "python": ["uv", "run", "--no-project", "python"]}
 
 
 # ------------------------------------------------------------- isolation
@@ -1037,7 +1052,12 @@ def _copy_produced(run_dir: Path, before: set[str], out_dir: Path) -> list[str]:
     relative paths (relative to the results root)."""
     produced: list[str] = []
     for rel in sorted(_file_set(run_dir) - before):
+        parts = PurePosixPath(rel).parts
+        if "__pycache__" in parts or rel.endswith(".pyc"):
+            continue
         src = run_dir / rel
+        if src.is_symlink():          # never dereference artifact-created links
+            continue
         dest = out_dir / rel
         try:
             dest.parent.mkdir(parents=True, exist_ok=True)
@@ -1142,11 +1162,10 @@ def run_artifact(row: dict, layout: Layout, env_rows: dict[str, dict],
     path = row.get("path", "")
     key = artifact_key(row)
     slug = repo_slug(repo)
-    choice = select_env(row, env_rows, layout)
     out_row: dict = {"repo": repo, "kind": kind, "path": path,
                      "artifact_key": key, "cells_executed": None,
-                     "runtime_sec": 0.0, "env_id": choice["env_id"],
-                     "data_mode": choice["data_mode"], "outputs": [],
+                     "runtime_sec": 0.0, "env_id": "main",
+                     "data_mode": "unknown", "outputs": [],
                      "reason": "", "run_at": now_iso()}
 
     def finish(verdict: str, reason: str = "") -> dict:
@@ -1154,6 +1173,13 @@ def run_artifact(row: dict, layout: Layout, env_rows: dict[str, dict],
         out_row["reason"] = reason
         out_row["runtime_sec"] = round(time.monotonic() - started, 3)
         return out_row
+
+    try:
+        choice = select_env(row, env_rows, layout)
+    except Exception as exc:          # one bad artifact must not stop the batch
+        return finish("error", f"{type(exc).__name__}: {exc}")
+    out_row["env_id"] = choice["env_id"]
+    out_row["data_mode"] = choice["data_mode"]
 
     if not choice["run"]:
         return finish("skip", choice["reason"])
@@ -1171,9 +1197,10 @@ def run_artifact(row: dict, layout: Layout, env_rows: dict[str, dict],
 
     stem = stem or _output_stem(path)
     run_dir = layout.runs / _run_dir_name(key)
-    before = _file_set(src)
     outputs: list[str] = []
+    res: dict = {}
     try:
+        before = _file_set(src)
         _make_run_copy(src, run_dir)
         env_dir = layout.results / slug
         env_dir.mkdir(parents=True, exist_ok=True)
@@ -1210,6 +1237,16 @@ def run_artifact(row: dict, layout: Layout, env_rows: dict[str, dict],
     return finish("ok")
 
 
+def _error_row(source: dict, exc: BaseException) -> dict:
+    """A leaderboard row for an exception that escaped ``run_artifact``."""
+    return {"repo": source.get("repo", ""), "kind": source.get("kind", ""),
+            "path": source.get("path", ""),
+            "artifact_key": artifact_key(source), "cells_executed": None,
+            "runtime_sec": 0.0, "env_id": "main", "data_mode": "unknown",
+            "outputs": [], "verdict": "error",
+            "reason": f"{type(exc).__name__}: {exc}", "run_at": now_iso()}
+
+
 def main_with(argv: list[str] | None = None, root: Path | None = None) -> int:
     """Run every triaged artifact that has no leaderboard row yet.
 
@@ -1217,7 +1254,7 @@ def main_with(argv: list[str] | None = None, root: Path | None = None) -> int:
     """
     ap = argparse.ArgumentParser(
         description="run triaged external artifacts and record the external "
-                    "leaderboard (stage [3c])")
+                    "leaderboard (stage [3e])")
     ap.add_argument("--jobs", type=int, default=4, help="concurrent artifacts")
     ap.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT,
                     help="per-artifact subprocess cap in seconds")
@@ -1245,6 +1282,10 @@ def main_with(argv: list[str] | None = None, root: Path | None = None) -> int:
         rows = [r for r in rows if r.get("repo") == args.repo]
     done = already_run(layout.leaderboard)
     todo = [r for r in rows if artifact_key(r) not in done]
+    unique: dict[str, dict] = {}
+    for r in todo:
+        unique.setdefault(artifact_key(r), r)   # duplicate keys share a run dir
+    todo = list(unique.values())
     if not todo:
         print("nothing to run -- every triaged artifact has a completed "
               "(ok) leaderboard row")
@@ -1260,7 +1301,10 @@ def main_with(argv: list[str] | None = None, root: Path | None = None) -> int:
                                 stems.get(artifact_key(r))): r
                    for r in todo}
         for i, fut in enumerate(concurrent.futures.as_completed(futures), 1):
-            row = fut.result()
+            try:
+                row = fut.result()
+            except Exception as exc:  # a worker bug must not kill the batch
+                row = _error_row(futures[fut], exc)
             append_row(row, layout.leaderboard)
             verdict = row.get("verdict", "error")
             counts[verdict] = counts.get(verdict, 0) + 1

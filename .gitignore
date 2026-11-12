@@ -18,6 +18,10 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# JS caches (frontend/node_modules has its own ignore; this covers stray
+# root-level caches from accidental runs outside frontend/)
+node_modules/
+
 # Distribution / packaging
 build/
 dist/

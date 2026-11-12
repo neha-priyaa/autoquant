@@ -26,6 +26,11 @@ it("exposes the YAML preview as a focusable region (#43)", () => {
   expect(pre).toHaveAttribute("tabindex", "0");
 });
 
+it("shows the YAML preview without an extra click so keyboard users can reach it (#43)", () => {
+  render(<SpecDetail slug="example" />);
+  expect(screen.getByRole("region", { name: "Strategy specification preview" })).toBeVisible();
+});
+
 it("labels the detail with the slug and section (#44)", () => {
   render(<SpecDetail slug="example" />);
   expect(document.title).toBe("example — Strategy Lab — AutoQuant");

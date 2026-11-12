@@ -86,7 +86,7 @@ export function SpecDetail({ slug }: { slug: string }) {
         ) : <CopyButton text={spec.raw} label="spec YAML" />}
       </div>
 
-      <details className="mt-6 border border-line">
+      <details className="mt-6 border border-line" open>
         <summary className="cursor-pointer px-4 py-2 font-mono text-xs text-dim">
           specs/{slug}.yaml
         </summary>

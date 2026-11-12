@@ -534,6 +534,7 @@ import io
 import json
 import re
 import sys
+import time
 import traceback
 
 nb_path, out_path, log_path = sys.argv[1], sys.argv[2], sys.argv[3]
@@ -616,6 +617,7 @@ def _flush():
 log = open(log_path, "w")
 if cells_note:
     log.write(cells_note + "\n")
+last_flush = 0.0
 try:
     for i, cell in enumerate(nb["cells"]):
         if not isinstance(cell, dict) or cell.get("cell_type") != "code":
@@ -651,7 +653,10 @@ try:
         ]
         log.write(out.getvalue())
         log.write(err.getvalue())
-        _flush()
+        now = time.monotonic()
+        if executed == 1 or now - last_flush >= 1.0:
+            _flush()
+            last_flush = now
     _flush()
 finally:
     log.close()

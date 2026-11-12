@@ -981,6 +981,16 @@ class TestJsonlHelpers:
         assert len(rows) == 1
         assert rows[0]["error"] == "new"
 
+    def test_rewrite_does_not_clobber_another_writers_temp_file(self, tmp_path):
+        """#47: a concurrent writer's temp file must survive our rewrite."""
+        path = tmp_path / "results" / "failed.jsonl"
+        path.parent.mkdir(parents=True)
+        other = path.with_suffix(path.suffix + ".tmp")
+        other.write_text("OTHER WRITER\n")
+        run_external.record_failure({"artifact_key": "k", "error": "new"}, path)
+        assert other.read_text() == "OTHER WRITER\n"
+        assert "new" in path.read_text()
+
     def test_failed_rewrite_leaves_original_intact(self, tmp_path, monkeypatch):
         path = tmp_path / "failed.jsonl"
         run_external.record_failure({"artifact_key": "a", "error": "old"}, path)

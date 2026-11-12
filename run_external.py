@@ -57,6 +57,7 @@ import re
 import shutil
 import signal
 import subprocess
+import tempfile
 import sys
 import time
 from datetime import date, datetime, timezone
@@ -184,11 +185,15 @@ def record_failure(row: dict, path: Path) -> None:
     prior = [r for r in load_jsonl(path)
              if not (key and r.get("artifact_key") == key)]
     prior.append(row)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    with tmp.open("w") as fh:
-        for r in prior:
-            fh.write(json.dumps(r) + "\n")
-    os.replace(tmp, path)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=path.name, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as fh:
+            for r in prior:
+                fh.write(json.dumps(r) + "\n")
+        os.replace(tmp, path)
+    except BaseException:
+        os.unlink(tmp)
+        raise
 
 
 def append_row(row: dict, path: Path) -> None:

@@ -18,6 +18,7 @@ import json
 import os
 import signal
 import subprocess
+import tempfile
 from pathlib import Path
 
 import yaml
@@ -105,12 +106,16 @@ def record_failure(result: dict, path: Path) -> None:
             except json.JSONDecodeError:
                 pass
             prior.append(line)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    with tmp.open("w") as fh:
-        for line in prior:
-            fh.write(line + "\n")
-        fh.write(json.dumps(result) + "\n")
-    os.replace(tmp, path)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=path.name, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as fh:
+            for line in prior:
+                fh.write(line + "\n")
+            fh.write(json.dumps(result) + "\n")
+        os.replace(tmp, path)
+    except BaseException:
+        os.unlink(tmp)
+        raise
 
 
 def main_with(argv: list[str] | None = None) -> int:

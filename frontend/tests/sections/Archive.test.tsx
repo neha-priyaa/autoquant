@@ -46,5 +46,5 @@ it("writes the sort to the URL and removes the default (#40)", async () => {
   await userEvent.selectOptions(screen.getByRole("combobox"), "sharpe");
   expect(screen.getByLabelText("search")).toHaveTextContent("?sort=sharpe");
   await userEvent.selectOptions(screen.getByRole("combobox"), "date");
-  expect(screen.getByLabelText("search")).toHaveTextContent("");
+  expect(screen.getByLabelText("search").textContent).toBe("");
 });

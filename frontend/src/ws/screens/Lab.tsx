@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Copy, Check } from "lucide-react";
 import { StatusDot } from "../../components/StatusDot";
@@ -9,6 +9,8 @@ import CliSnippet from "../../components/CliSnippet";
 function CopyButton({ text, label }: { text: string; label: string }) {
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const resetTimer = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => () => clearTimeout(resetTimer.current), []);
   async function copy(): Promise<void> {
     setError(null);
     setDone(false);
@@ -19,7 +21,7 @@ function CopyButton({ text, label }: { text: string; label: string }) {
     try {
       await navigator.clipboard.writeText(text);
       setDone(true);
-      setTimeout(() => setDone(false), 1500);
+      resetTimer.current = setTimeout(() => setDone(false), 1500);
     } catch {
       setError("Could not copy. Allow clipboard access or copy from the YAML preview.");
     }

@@ -79,7 +79,7 @@ describe("URL writes (#40)", () => {
     fireEvent.change(screen.getByLabelText("Minimum triage score"), { target: { value: "3" } });
     expect(screen.getByLabelText("search")).toHaveTextContent("?minScore=3");
     fireEvent.change(screen.getByLabelText("Minimum triage score"), { target: { value: "0" } });
-    expect(screen.getByLabelText("search")).toHaveTextContent("");
+    expect(screen.getByLabelText("search").textContent).toBe("");
   });
 
   it("writes the Catalog search to the URL and removes it when cleared", async () => {

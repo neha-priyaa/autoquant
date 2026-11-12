@@ -25,15 +25,16 @@ const SpecDetail = lazy(() =>
 const BacktestDetail = lazy(() =>
   import("./ws/screens/Backtests").then((m) => ({ default: m.BacktestDetail })));
 
+// Plain div: inside the workspace Shell, which already renders <main>.
 function NotFound() {
   return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col justify-center px-6">
+    <div className="mx-auto flex min-h-screen max-w-3xl flex-col justify-center px-6">
       <div className="font-mono text-xs tracking-widest text-dim">404</div>
       <h1 className="mt-4 text-5xl font-light">This page doesn&apos;t exist.</h1>
       <p className="mt-4 text-dim">The research workspace has: Overview, Feed,
         Triage, Strategy Lab, Backtests, Leaderboard, Catalog.</p>
       <p className="mt-6"><Link to="/" className="underline">Home</Link></p>
-    </main>
+    </div>
   );
 }
 
@@ -95,7 +96,7 @@ export default function App() {
             </Route>
             <Route path="*" element={<NotFound />} />
           </Route>
-          <Route path="*" element={<NotFound />} />
+          <Route path="*" element={<main><NotFound /></main>} />
         </Routes>
       </BrowserRouter>
     </StrictMode>

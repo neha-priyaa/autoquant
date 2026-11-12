@@ -252,6 +252,16 @@ class TestRecordFailureDedupe:
 
 
 class TestAtomicRewrite:
+    def test_rewrite_does_not_clobber_another_writers_temp_file(self, tmp_path):
+        """#47: a concurrent writer's temp file must survive our rewrite."""
+        path = tmp_path / "results" / "failed.jsonl"
+        path.parent.mkdir(parents=True)
+        other = path.with_suffix(path.suffix + ".tmp")
+        other.write_text("OTHER WRITER\n")
+        backtest_batch.record_failure({"spec": "s.yaml", "error": "new"}, path)
+        assert other.read_text() == "OTHER WRITER\n"
+        assert "new" in path.read_text()
+
     def test_failed_rewrite_leaves_original_intact(self, tmp_path, monkeypatch):
         path = tmp_path / "results" / "failed.jsonl"
         path.parent.mkdir(parents=True)

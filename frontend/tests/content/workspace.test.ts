@@ -32,3 +32,22 @@ describe("newestRuns", () => {
     expect(runs.map((r) => r.slug)).toEqual(["first", "later", "older"]);
   });
 });
+
+describe("loadWorkspace element validation (B2)", () => {
+  it("drops triage rows that are not objects and defaults missing list fields", () => {
+    const ws = loadWorkspace({ triage: [null, 42, { slug: "a", score: 3 }] });
+    expect(ws.triage).toHaveLength(1);
+    expect(ws.triage[0]).toMatchObject({ slug: "a", redFlags: [], missing: [] });
+  });
+
+  it("defaults catalog tags to an empty array", () => {
+    const ws = loadWorkspace({ catalog: [{ id: "c1" }, null] });
+    expect(ws.catalog).toHaveLength(1);
+    expect(ws.catalog[0].tags).toEqual([]);
+  });
+
+  it("drops reports without a metrics array", () => {
+    const ws = loadWorkspace({ reports: { bad: { text: "x" }, good: { text: "y", metrics: [] } } });
+    expect(Object.keys(ws.reports)).toEqual(["good"]);
+  });
+});

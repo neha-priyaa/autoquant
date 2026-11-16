@@ -28,6 +28,23 @@ export function newestRuns(runs: RunRow[]): RunRow[] {
   return [...runs].reverse().sort((a, b) => timestamp(b) - timestamp(a));
 }
 
+function isObject(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function stringList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
+}
+
+function reportsBySlug(value: unknown): Record<string, Report> {
+  if (!isObject(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value).filter(
+      (entry): entry is [string, Report] => isObject(entry[1]) && Array.isArray(entry[1].metrics),
+    ),
+  );
+}
+
 export function loadWorkspace(raw: unknown): Workspace {
   if (!raw || typeof raw !== "object") return empty;
   const w = raw as Partial<Workspace>;
@@ -43,12 +60,16 @@ export function loadWorkspace(raw: unknown): Workspace {
     }));
   return {
     articles: Array.isArray(w.articles) ? w.articles : [],
-    triage: Array.isArray(w.triage) ? w.triage : [],
+    triage: (Array.isArray(w.triage) ? w.triage : [])
+      .filter(isObject)
+      .map((t) => ({ ...t, redFlags: stringList(t.redFlags), missing: stringList(t.missing) })),
     specs,
     runs: Array.isArray(w.runs) ? w.runs : [],
-    reports: w.reports && typeof w.reports === "object" ? w.reports : {},
+    reports: reportsBySlug(w.reports),
     failed: Array.isArray(w.failed) ? w.failed : [],
-    catalog: Array.isArray(w.catalog) ? w.catalog : [],
+    catalog: (Array.isArray(w.catalog) ? w.catalog : [])
+      .filter(isObject)
+      .map((c) => ({ ...c, tags: stringList(c.tags) })),
     catalogCount: w.catalogCount ?? 0,
   };
 }

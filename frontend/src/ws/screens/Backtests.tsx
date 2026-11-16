@@ -7,7 +7,7 @@ import { useDocumentTitle } from "../../lib/useDocumentTitle";
 
 export function BacktestDetail({ slug }: { slug: string }) {
   useDocumentTitle(`${slug} — Backtest Report`);
-  const report = workspace.reports[slug];
+  const report = Object.hasOwn(workspace.reports, slug) ? workspace.reports[slug] : undefined;
   const run = newestRuns(workspace.runs).find((r) => r.slug === slug && r.lane === "article");
   if (!report && !run) {
     return <p className="mt-10 text-dim">No backtest run found for {slug}.</p>;

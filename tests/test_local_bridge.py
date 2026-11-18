@@ -226,3 +226,134 @@ class TestAPI:
             self.call(monkeypatch, {"message": "   "}, lambda *a: {},
                       tmp_path)
         assert raised.value.status_code == 400
+
+    def test_rejects_flag_like_session_id_before_running(self, monkeypatch,
+                                                         tmp_path):
+        calls = []
+
+        async def runner(msg, session_id):
+            calls.append((msg, session_id))
+            return {"reply": "x", "sessionId": session_id}
+
+        monkeypatch.setattr(self.ws, "run_claude", runner)
+        with pytest.raises(HTTPException) as raised:
+            asyncio.run(self.ws.chat(
+                self.ws.ChatBody(message="hi", sessionId="--help")))
+        assert raised.value.status_code == 400
+        assert calls == []
+
+
+class TestRunClaude:
+    class FakeProc:
+        def __init__(self, stdout=b"", stderr=b"", code=0, delay=0.0):
+            self.stdout, self.stderr, self.code = stdout, stderr, code
+            self.returncode = code
+            self.delay = delay
+            self.pid = 4242
+            self.killed = False
+
+        async def communicate(self):
+            if self.delay:
+                await asyncio.sleep(self.delay)
+            return self.stdout, self.stderr
+
+        async def wait(self):
+            return self.code
+
+        def kill(self):
+            self.killed = True
+
+    def install(self, monkeypatch, proc):
+        ws = load_module()
+
+        async def fake_exec(*args, **kwargs):
+            return proc
+
+        monkeypatch.setattr(ws.asyncio, "create_subprocess_exec", fake_exec)
+        return ws
+
+    def test_missing_cli_is_a_cli_error(self, monkeypatch):
+        ws = load_module()
+
+        async def missing(*args, **kwargs):
+            raise FileNotFoundError
+
+        monkeypatch.setattr(ws.asyncio, "create_subprocess_exec", missing)
+        with pytest.raises(ws.CLIError, match="not found"):
+            asyncio.run(ws.run_claude("hi", None))
+
+    def test_nonzero_exit_surfaces_stderr(self, monkeypatch):
+        proc = self.FakeProc(stderr=b"bad cli", code=2)
+        ws = self.install(monkeypatch, proc)
+        with pytest.raises(ws.CLIError, match="bad cli"):
+            asyncio.run(ws.run_claude("hi", None))
+
+    def test_unparseable_output_is_a_cli_error(self, monkeypatch):
+        proc = self.FakeProc(stdout=b"not json", code=0)
+        ws = self.install(monkeypatch, proc)
+        with pytest.raises(ws.CLIError, match="unparseable"):
+            asyncio.run(ws.run_claude("hi", None))
+
+    def test_timeout_kills_the_process_group(self, monkeypatch):
+        proc = self.FakeProc(delay=1.0)
+        ws = self.install(monkeypatch, proc)
+        killed = []
+        monkeypatch.setattr(ws, "TIMEOUT_S", 0.01)
+        monkeypatch.setattr(ws.os, "getpgid", lambda pid: pid)
+        monkeypatch.setattr(ws.os, "killpg",
+                            lambda pgid, sig: killed.append(pgid))
+        with pytest.raises(ws.CLIError, match="timed out"):
+            asyncio.run(ws.run_claude("hi", None))
+        assert killed == [proc.pid]
+
+
+class TestBodyLimit:
+    def request(self, content_length: str | None):
+        from starlette.requests import Request
+        headers = ([] if content_length is None
+                   else [(b"content-length", content_length.encode())])
+        return Request({"type": "http", "method": "POST",
+                        "path": "/api/chat", "headers": headers})
+
+    def test_oversized_body_is_413(self):
+        ws = load_module()
+        sentinel = object()
+
+        async def call_next(request):
+            return sentinel
+
+        response = asyncio.run(ws.limit_body(
+            self.request(str(ws.MAX_BODY_BYTES + 1)), call_next))
+        assert response.status_code == 413
+
+    def test_invalid_content_length_is_400(self):
+        ws = load_module()
+
+        async def call_next(request):
+            return object()
+
+        response = asyncio.run(ws.limit_body(self.request("nope"), call_next))
+        assert response.status_code == 400
+
+    def test_normal_request_passes_through(self):
+        ws = load_module()
+        sentinel = object()
+
+        async def call_next(request):
+            return sentinel
+
+        assert asyncio.run(ws.limit_body(self.request("42"), call_next)) is sentinel
+
+
+class TestDigest:
+    def test_reads_the_split_workspace_file(self, monkeypatch, tmp_path):
+        ws = load_module()
+        snapshot = tmp_path / "snapshot.json"
+        snapshot.write_text(json.dumps({
+            "generatedAt": "2026-01-01", "counts": {"articles": 2}}))
+        (tmp_path / "workspace.json").write_text(json.dumps({
+            "runs": [{"slug": "s1", "status": "ok", "netSharpe": 1.2}],
+            "failed": [], "specs": [{"slug": "sp"}], "catalogCount": 3}))
+        monkeypatch.setattr(ws, "DIGEST_PATH", snapshot)
+        digest = ws.load_digest()
+        assert "s1" in digest and "3 data series" in digest

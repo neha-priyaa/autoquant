@@ -23,16 +23,19 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 
 ROOT = Path(__file__).resolve().parent
 DIGEST_PATH = ROOT / "frontend" / "src" / "content" / "snapshot.json"
 CHAT_DIR = ROOT / "data" / "chat"
 TIMEOUT_S = 300
 TITLE_MAX = 60
-SESSION_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+MAX_MESSAGE_CHARS = 16_000
+MAX_BODY_BYTES = 64 * 1024
+SESSION_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 log = logging.getLogger("local_bridge")
 
 app = FastAPI(title="autoquant local bridge")
@@ -44,6 +47,22 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def limit_body(request: Request, call_next):
+    """Reject oversized request bodies before FastAPI parses them."""
+    raw = request.headers.get("content-length")
+    if raw is not None:
+        try:
+            too_large = int(raw) > MAX_BODY_BYTES
+        except ValueError:
+            return JSONResponse({"detail": "invalid content-length"},
+                                status_code=400)
+        if too_large:
+            return JSONResponse({"detail": "request body too large"},
+                                status_code=413)
+    return await call_next(request)
 
 
 class CLIError(Exception):
@@ -90,6 +109,7 @@ async def run_claude(message: str, session_id: str | None) -> dict:
             os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
         except (ProcessLookupError, PermissionError):
             proc.kill()
+        await proc.wait()
         raise CLIError(f"claude CLI timed out after {TIMEOUT_S}s") from None
     if proc.returncode != 0:
         raise CLIError((stderr or b"").decode(errors="ignore")[-300:]
@@ -112,7 +132,11 @@ def load_digest() -> str:
     """Compact research digest from the build-time snapshot."""
     snapshot = json.loads(DIGEST_PATH.read_text())
     counts = snapshot.get("counts", {})
-    w = snapshot.get("workspace", {})
+    workspace_path = DIGEST_PATH.with_name("workspace.json")
+    try:
+        w = json.loads(workspace_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        w = snapshot.get("workspace", {})
     runs = sorted(w.get("runs", []), key=lambda r: r.get("date") or "",
                   reverse=True)
     latest = "; ".join(
@@ -131,7 +155,7 @@ def load_digest() -> str:
 
 
 class ChatBody(BaseModel):
-    message: str
+    message: str = Field(min_length=1, max_length=MAX_MESSAGE_CHARS)
     sessionId: str | None = None
 
 
@@ -172,12 +196,13 @@ def save_turn(session_id: str, role: str, text: str) -> None:
     if not chat.get("title") and role == "user":
         chat["title"] = _title(text)
     chat["updated"] = _now()
-    path.parent.mkdir(parents=True, exist_ok=True)
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     # Replace atomically so a crash cannot leave a half-written transcript
     with tempfile.NamedTemporaryFile(
             "w", dir=path.parent, delete=False, suffix=".tmp") as tmp:
         json.dump(chat, tmp)
         tmp_path = Path(tmp.name)
+    os.chmod(tmp_path, 0o600)
     os.replace(tmp_path, path)
 
 
@@ -187,7 +212,10 @@ def list_chats() -> list[dict]:
         return []
     chats = []
     for path in CHAT_DIR.glob("*.json"):
-        chat = load_chat(path.stem)
+        try:
+            chat = load_chat(path.stem)
+        except ValueError:
+            continue
         if chat is None:
             continue
         chats.append({
@@ -236,6 +264,8 @@ def chat_transcript(session_id: str) -> dict:
 async def chat(body: ChatBody) -> dict:
     if not body.message.strip():
         raise HTTPException(400, "message must not be empty")
+    if body.sessionId is not None and not SESSION_ID.match(body.sessionId):
+        raise HTTPException(400, "invalid session id")
     message = (seed_message(body.message, load_digest())
                if body.sessionId is None else body.message)
     try:

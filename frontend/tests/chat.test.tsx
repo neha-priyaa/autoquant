@@ -36,6 +36,17 @@ describe("Chat screen", () => {
       expect(screen.getByText(/local bridge isn't reachable/)).toBeInTheDocument());
   });
 
+  it("shows the bridge's failure message when the CLI errors", async () => {
+    vi.mocked(sendChat).mockResolvedValue({
+      ok: false, offline: false,
+      error: "claude CLI not found on PATH",
+    });
+    render(<Chat />);
+    await ask("hi");
+    await waitFor(() =>
+      expect(screen.getByText(/claude CLI not found on PATH/)).toBeInTheDocument());
+  });
+
   it("renders the reply as an assistant bubble", async () => {
     vi.mocked(sendChat).mockResolvedValue({
       ok: true, reply: "7 backtests", sessionId: "s1",

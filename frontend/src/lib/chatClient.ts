@@ -42,13 +42,13 @@ export async function sendChat(
   const body = (await res.json().catch(() => ({}))) as {
     reply?: string;
     sessionId?: string | null;
-    error?: string;
+    detail?: unknown;
   };
   if (!res.ok) {
     return {
       ok: false,
       offline: false,
-      error: body.error ?? `bridge returned ${res.status}`,
+      error: errorDetail(body.detail) ?? `bridge returned ${res.status}`,
     };
   }
   if (typeof body.reply !== "string") {
@@ -84,6 +84,21 @@ export async function loadChat(sessionId: string): Promise<ChatTurn[]> {
       (t.role === "user" || t.role === "assistant") &&
       typeof t.text === "string",
   );
+}
+
+/** FastAPI reports failures as `detail`: a string for HTTPException and an
+ * array of field errors for a malformed body. */
+function errorDetail(detail: unknown): string | null {
+  if (typeof detail === "string" && detail.trim()) return detail;
+  if (!Array.isArray(detail)) return null;
+  const messages = detail
+    .map((entry) =>
+      entry && typeof entry === "object" &&
+      typeof (entry as { msg?: unknown }).msg === "string"
+        ? (entry as { msg: string }).msg
+        : null)
+    .filter((msg): msg is string => !!msg);
+  return messages.length > 0 ? messages.join("; ") : null;
 }
 
 async function getJson(path: string): Promise<unknown> {

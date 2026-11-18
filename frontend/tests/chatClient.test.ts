@@ -23,14 +23,40 @@ describe("sendChat", () => {
     expect(out).toMatchObject({ ok: false, offline: true });
   });
 
-  it("surfaces bridge errors without the offline flag", async () => {
+  it("surfaces the bridge's detail without the offline flag", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
       ok: false,
       status: 502,
-      json: () => Promise.resolve({ error: "boom from cli" }),
+      json: () => Promise.resolve({ detail: "boom from cli" }),
     }));
     const out = await sendChat("hi", "abc");
     expect(out).toMatchObject({ ok: false, offline: false, error: "boom from cli" });
+  });
+
+  it("surfaces a body-validation failure as its messages", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: false,
+      status: 422,
+      json: () => Promise.resolve({
+        detail: [{ msg: "String should have at least 1 character" }],
+      }),
+    }));
+    const out = await sendChat("", null);
+    expect(out).toMatchObject({
+      ok: false,
+      offline: false,
+      error: "String should have at least 1 character",
+    });
+  });
+
+  it("falls back to the status when a failure has no usable detail", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: false,
+      status: 413,
+      json: () => Promise.resolve({ detail: [null, "junk"] }),
+    }));
+    const out = await sendChat("hi", "abc");
+    expect(out).toMatchObject({ ok: false, offline: false, error: "bridge returned 413" });
   });
 });
 

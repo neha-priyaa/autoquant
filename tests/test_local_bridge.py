@@ -122,6 +122,11 @@ class TestSeedContext:
         msg = ws.seed_message("how many runs?", "DIGEST")
         assert "how many runs?" in msg and "DIGEST" in msg
 
+    def test_seed_replays_earlier_turns_when_given_them(self, tmp_path):
+        ws = load_module()
+        msg = ws.seed_message("and now?", "DIGEST", "User: ping")
+        assert "User: ping" in msg and "DIGEST" in msg
+
 
 class TestAPI:
     """Handlers called directly (no HTTP layer) with the runner monkeypatched."""
@@ -203,15 +208,56 @@ class TestAPI:
     def test_second_turn_resumes_session_verbatim(self, monkeypatch,
                                                   tmp_path):
         calls = []
+        session_id = "b8aff7a7-a46c-4de4-86ec-61085a56ffa1"
 
         async def runner(msg, session_id):
             calls.append((msg, session_id))
             return {"reply": "ok", "sessionId": session_id or "abc"}
 
         self.call(monkeypatch, {"message": "hi"}, runner, tmp_path)
-        self.call(monkeypatch, {"message": "more", "sessionId": "abc"},
+        self.call(monkeypatch, {"message": "more", "sessionId": session_id},
                   runner, tmp_path)
-        assert calls[-1] == ("more", "abc")  # verbatim: no re-seed, resumed
+        assert calls[-1] == ("more", session_id)  # verbatim: no re-seed
+
+    def test_unresumable_session_id_replays_the_transcript(self, monkeypatch,
+                                                           tmp_path):
+        """A transcript the CLI cannot --resume must not 502 the user."""
+        calls = []
+        ws = self.ws
+        monkeypatch.setattr(ws, "CHAT_DIR", tmp_path / "chat")
+        ws.save_turn("browser-test", "user", "ping")
+        ws.save_turn("browser-test", "assistant", "PONG from the test bridge")
+
+        async def runner(msg, session_id):
+            calls.append((msg, session_id))
+            return {"reply": "PONG", "sessionId":
+                    "b8aff7a7-a46c-4de4-86ec-61085a56ffa1"}
+
+        monkeypatch.setattr(ws, "run_claude", runner)
+        monkeypatch.setattr(ws, "load_digest", lambda: "DIGEST")
+        out = asyncio.run(
+            ws.chat(ws.ChatBody(message="why?", sessionId="browser-test")))
+
+        msg, resumed = calls[0]
+        assert resumed is None  # never handed to --resume
+        assert "DIGEST" in msg
+        assert "PONG from the test bridge" in msg  # context kept
+        assert "why?" in msg
+        assert out["sessionId"] == "browser-test"  # same thread, not a new one
+        assert [m["text"] for m in ws.load_chat("browser-test")["messages"]] \
+            == ["ping", "PONG from the test bridge", "why?", "PONG"]
+
+    def test_replay_keeps_the_newest_turns_within_the_cap(self, monkeypatch,
+                                                          tmp_path):
+        ws = self.ws
+        monkeypatch.setattr(ws, "CHAT_DIR", tmp_path / "chat")
+        monkeypatch.setattr(ws, "REPLAY_MAX_CHARS", 40)
+        ws.save_turn("browser-test", "user", "old question " * 10)
+        ws.save_turn("browser-test", "assistant", "fresh answer")
+
+        history = ws.history_text("browser-test")
+        assert "fresh answer" in history
+        assert "old question" not in history
 
     def test_cli_failure_maps_to_502(self, monkeypatch, tmp_path):
         async def runner(msg, session_id):

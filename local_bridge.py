@@ -20,6 +20,7 @@ import os
 import re
 import signal
 import tempfile
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -35,6 +36,8 @@ TIMEOUT_S = 300
 TITLE_MAX = 60
 MAX_MESSAGE_CHARS = 16_000
 MAX_BODY_BYTES = 64 * 1024
+REPLAY_MAX_TURNS = 20
+REPLAY_MAX_CHARS = 8_000
 SESSION_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 log = logging.getLogger("local_bridge")
 
@@ -117,14 +120,16 @@ async def run_claude(message: str, session_id: str | None) -> dict:
     return parse_reply(stdout.decode(errors="ignore"))
 
 
-def seed_message(message: str, digest: str) -> str:
-    """First turn of a session: ground the assistant in the research digest."""
+def seed_message(message: str, digest: str, history: str = "") -> str:
+    """Ground the assistant in the digest, replaying earlier turns if any."""
+    earlier = (f"--- EARLIER TURNS ---\n{history}\n"
+               "--- END EARLIER TURNS ---\n\n" if history else "")
     return (
         "You are AutoQuant's research assistant. Answer only from the "
         "research snapshot below — if something is not in it, say so; "
         "never invent results, metrics, or citations.\n\n"
         f"--- RESEARCH SNAPSHOT ---\n{digest}\n--- END SNAPSHOT ---\n\n"
-        f"{message}"
+        f"{earlier}{message}"
     )
 
 
@@ -152,6 +157,30 @@ def load_digest() -> str:
         f"Specs include: {specs}. "
         f"Catalog: {w.get('catalogCount', 0)} data series."
     )
+
+
+def resumable(session_id: str | None) -> bool:
+    """claude --resume only accepts the UUID ids its own sessions carry."""
+    try:
+        uuid.UUID(session_id or "")
+    except ValueError:
+        return False
+    return True
+
+
+def history_text(session_id: str | None) -> str:
+    """Saved turns for a transcript the CLI cannot resume, newest last."""
+    if not session_id:
+        return ""
+    chat = load_chat(session_id) or {"messages": []}
+    lines, used = [], 0
+    for turn in reversed(chat["messages"][-REPLAY_MAX_TURNS:]):
+        text = str(turn.get("text", ""))[:2_000]
+        if used + len(text) > REPLAY_MAX_CHARS:
+            break
+        used += len(text)
+        lines.append(f"{turn.get('role', 'user').title()}: {text}")
+    return "\n\n".join(reversed(lines))
 
 
 class ChatBody(BaseModel):
@@ -266,12 +295,21 @@ async def chat(body: ChatBody) -> dict:
         raise HTTPException(400, "message must not be empty")
     if body.sessionId is not None and not SESSION_ID.match(body.sessionId):
         raise HTTPException(400, "invalid session id")
-    message = (seed_message(body.message, load_digest())
-               if body.sessionId is None else body.message)
+    resume = body.sessionId if resumable(body.sessionId) else None
+    if body.sessionId is None:
+        message = seed_message(body.message, load_digest())
+    elif resume is None:
+        # saved under an id --resume rejects: replay the turns instead
+        message = seed_message(body.message, load_digest(),
+                               history_text(body.sessionId))
+    else:
+        message = body.message
     try:
-        out = await run_claude(message, body.sessionId)
+        out = await run_claude(message, resume)
     except CLIError as exc:
         raise HTTPException(502, str(exc)) from exc
+    if resume is None and body.sessionId is not None:
+        out["sessionId"] = body.sessionId
     record_turn(out["sessionId"], body.message.strip(), out["reply"])
     return out
 

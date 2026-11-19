@@ -16,6 +16,9 @@ export default function Chat() {
   const [showHistory, setShowHistory] = useState(false);
   const [waiting, setWaiting] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
+  // bumped by every conversation switch (restore, open, new); async results
+  // captured before the bump are dropped so they cannot clobber the newer view
+  const genRef = useRef(0);
 
   useEffect(() => {
     endRef.current?.scrollIntoView?.({ behavior: "smooth" });
@@ -26,20 +29,28 @@ export default function Chat() {
   }, []);
 
   async function restoreLatest() {
+    const gen = ++genRef.current;
     const chats = await listChats();
+    if (genRef.current !== gen) return;
     setHistory(chats);
     if (chats.length === 0) return;
-    setMessages(await loadChat(chats[0].sessionId));
+    const saved = await loadChat(chats[0].sessionId);
+    if (genRef.current !== gen) return;
+    setMessages(saved);
     setSessionId(chats[0].sessionId);
   }
 
   async function openChat(id: string) {
-    setMessages(await loadChat(id));
+    const gen = ++genRef.current;
+    const saved = await loadChat(id);
+    if (genRef.current !== gen) return;
+    setMessages(saved);
     setSessionId(id);
     setShowHistory(false);
   }
 
   function newChat() {
+    genRef.current++;
     setMessages([]);
     setSessionId(null);
     setShowHistory(false);
@@ -51,8 +62,10 @@ export default function Chat() {
     setInput("");
     setMessages((m) => [...m, { role: "user", text }]);
     setWaiting(true);
+    const gen = ++genRef.current;
     const out = await sendChat(text, sessionId);
     setWaiting(false);
+    if (genRef.current !== gen) return; // conversation switched mid-flight
     if (out.ok) {
       setSessionId(out.sessionId);
       setMessages((m) => [...m, { role: "assistant", text: out.reply }]);

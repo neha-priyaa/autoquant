@@ -1,7 +1,8 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import Chat from "../src/ws/screens/Chat";
-import { listChats, loadChat, sendChat } from "../src/lib/chatClient";
+import { listChats, loadChat, sendChat,
+         type ChatSummary, type ChatOutcome, type ChatTurn } from "../src/lib/chatClient";
 
 vi.mock("../src/lib/chatClient", () => ({
   sendChat: vi.fn(),
@@ -159,5 +160,49 @@ describe("Chat history", () => {
     await waitFor(() => expect(listChats).toHaveBeenCalled());
     await userEvent.click(screen.getByRole("button", { name: /HISTORY \(0\)/ }));
     expect(screen.getByText(/No saved conversations yet/)).toBeInTheDocument();
+  });
+
+  it("drops a reply that lands after the user started a new chat", async () => {
+    let resolveSend!: (v: ChatOutcome) => void;
+    vi.mocked(sendChat).mockImplementation(
+      () => new Promise((resolve) => { resolveSend = resolve; }));
+    render(<Chat />);
+    await ask("hi");
+    await userEvent.click(screen.getByRole("button", { name: "NEW CHAT" }));
+    resolveSend({ ok: true, reply: "stale reply", sessionId: "old" });
+    // the send is no longer pending…
+    await waitFor(() => expect(
+      screen.getByPlaceholderText("Ask about your research…")).toBeInTheDocument());
+    // …but the stale reply never enters the fresh conversation
+    expect(screen.queryByText("stale reply")).not.toBeInTheDocument();
+  });
+
+  it("keeps the fresh chat when the initial restore resolves late", async () => {
+    let resolveList!: (v: ChatSummary[]) => void;
+    vi.mocked(listChats).mockImplementation(
+      () => new Promise((resolve) => { resolveList = resolve; }));
+    render(<Chat />);
+    await userEvent.click(screen.getByRole("button", { name: "NEW CHAT" }));
+    resolveList([savedChat("old", "Old chat")]);
+    await waitFor(() => expect(
+      screen.getByText(/Ask about your research/)).toBeInTheDocument());
+    expect(loadChat).not.toHaveBeenCalled();
+  });
+
+  it("keeps the fresh chat when a history open resolves late", async () => {
+    let resolveLoad!: (v: ChatTurn[]) => void;
+    vi.mocked(loadChat).mockImplementation(
+      () => new Promise((resolve) => { resolveLoad = resolve; }));
+    vi.mocked(listChats).mockResolvedValue([savedChat("old", "Old chat")]);
+    render(<Chat />);
+    await waitFor(() => expect(
+      screen.getByRole("button", { name: /HISTORY \(1\)/ })).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: /HISTORY \(1\)/ }));
+    await userEvent.click(screen.getByText("Old chat"));
+    await userEvent.click(screen.getByRole("button", { name: "NEW CHAT" }));
+    resolveLoad([{ role: "user", text: "old question" }]);
+    await waitFor(() => expect(
+      screen.getByText(/Ask about your research/)).toBeInTheDocument());
+    expect(screen.queryByText("old question")).not.toBeInTheDocument();
   });
 });

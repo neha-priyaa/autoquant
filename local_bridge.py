@@ -20,6 +20,7 @@ import os
 import re
 import signal
 import tempfile
+import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -39,7 +40,21 @@ MAX_BODY_BYTES = 64 * 1024
 REPLAY_MAX_TURNS = 20
 REPLAY_MAX_CHARS = 8_000
 SESSION_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
 log = logging.getLogger("local_bridge")
+
+# Per-session save locks: save_turn is read-modify-write, so two concurrent
+# POSTs for the same session would silently lose one exchange.
+_save_locks: dict[str, threading.Lock] = {}
+_save_locks_guard = threading.Lock()
+
+
+def _save_lock(session_id: str) -> threading.Lock:
+    with _save_locks_guard:
+        lock = _save_locks.get(session_id)
+        if lock is None:
+            lock = _save_locks[session_id] = threading.Lock()
+        return lock
 
 app = FastAPI(title="autoquant local bridge")
 app.add_middleware(
@@ -54,8 +69,18 @@ app.add_middleware(
 
 @app.middleware("http")
 async def limit_body(request: Request, call_next):
-    """Reject oversized request bodies before FastAPI parses them."""
+    """Guard the bridge before FastAPI parses anything.
+
+    Size cap, then loopback-only access (a browser cannot be trusted to
+    enforce CORS on its own: a text/plain cross-site POST would still run,
+    and DNS rebinding would make the bridge same-origin), then require
+    application/json on POSTs — a browser cannot send that content type
+    cross-origin without a preflight, which the CORS policy rejects.
+    """
     raw = request.headers.get("content-length")
+    if raw is None and request.method == "POST":
+        return JSONResponse({"detail": "content-length required"},
+                            status_code=411)
     if raw is not None:
         try:
             too_large = int(raw) > MAX_BODY_BYTES
@@ -65,6 +90,16 @@ async def limit_body(request: Request, call_next):
         if too_large:
             return JSONResponse({"detail": "request body too large"},
                                 status_code=413)
+    host = request.headers.get("host") or ""
+    candidates = {host.strip("[]"), host.rsplit(":", 1)[0].strip("[]")}
+    if host and not candidates & LOOPBACK_HOSTS:
+        return JSONResponse({"detail": "loopback access only"},
+                            status_code=403)
+    if request.method == "POST":
+        ctype = request.headers.get("content-type", "").split(";")[0].strip()
+        if ctype != "application/json":
+            return JSONResponse({"detail": "use application/json"},
+                                status_code=415)
     return await call_next(request)
 
 
@@ -111,7 +146,10 @@ async def run_claude(message: str, session_id: str | None) -> dict:
         try:
             os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
         except (ProcessLookupError, PermissionError):
-            proc.kill()
+            try:
+                proc.kill()
+            except ProcessLookupError:
+                pass
         await proc.wait()
         raise CLIError(f"claude CLI timed out after {TIMEOUT_S}s") from None
     if proc.returncode != 0:
@@ -134,6 +172,16 @@ def seed_message(message: str, digest: str, history: str = "") -> str:
 
 
 def load_digest() -> str:
+    """Compact research digest; grounding is optional, never load-bearing."""
+    try:
+        return _digest_text()
+    except (OSError, json.JSONDecodeError, TypeError, AttributeError) as exc:
+        log.warning("could not load digest: %s", exc)
+        return ("Research snapshot unavailable. Answer from the question "
+                "alone and say you could not load the research snapshot.")
+
+
+def _digest_text() -> str:
     """Compact research digest from the build-time snapshot."""
     snapshot = json.loads(DIGEST_PATH.read_text())
     counts = snapshot.get("counts", {})
@@ -147,7 +195,8 @@ def load_digest() -> str:
     latest = "; ".join(
         f"{r.get('slug')} [{r.get('status')} sharpe={r.get('netSharpe')}]"
         for r in runs[:5])
-    failed = "; ".join(f["slug"] for f in w.get("failed", [])[:5]) or "none"
+    failed = "; ".join(str(f.get("slug", "")) for f in w.get("failed", [])[:5]
+                       if isinstance(f, dict)) or "none"
     specs = "; ".join(s.get("slug", "") for s in w.get("specs", [])[:8])
     return (
         f"Generated {snapshot.get('generatedAt')}. "
@@ -307,10 +356,21 @@ async def chat(body: ChatBody) -> dict:
     try:
         out = await run_claude(message, resume)
     except CLIError as exc:
-        raise HTTPException(502, str(exc)) from exc
+        if resume is None or "timed out" in str(exc):
+            raise HTTPException(502, str(exc)) from exc
+        # A structurally valid UUID the CLI no longer knows must not brick
+        # the thread: replay the saved transcript into a fresh session.
+        message = seed_message(body.message, load_digest(),
+                               history_text(body.sessionId))
+        try:
+            out = await run_claude(message, None)
+        except CLIError as retry_exc:
+            raise HTTPException(502, str(retry_exc)) from retry_exc
+        out["sessionId"] = body.sessionId
     if resume is None and body.sessionId is not None:
         out["sessionId"] = body.sessionId
-    record_turn(out["sessionId"], body.message.strip(), out["reply"])
+    with _save_lock(out["sessionId"] or ""):
+        record_turn(out["sessionId"], body.message.strip(), out["reply"])
     return out
 
 

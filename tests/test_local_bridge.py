@@ -267,6 +267,64 @@ class TestAPI:
         assert raised.value.status_code == 502
         assert "boom" in raised.value.detail
 
+    def test_dead_uuid_session_replays_instead_of_502(self, monkeypatch,
+                                                      tmp_path):
+        """A UUID whose CLI session is gone must not brick the chat."""
+        ws = self.ws
+        monkeypatch.setattr(ws, "CHAT_DIR", tmp_path / "chat")
+        sid = "b8aff7a7-a46c-4de4-86ec-61085a56ffa1"
+        ws.save_turn(sid, "user", "ping")
+        ws.save_turn(sid, "assistant", "PONG")
+        calls = []
+
+        async def runner(msg, session_id):
+            calls.append((msg, session_id))
+            if session_id is not None:
+                raise ws.CLIError("No conversation found with session ID")
+            return {"reply": "PONG2", "sessionId": "fresh-uuid"}
+
+        monkeypatch.setattr(ws, "run_claude", runner)
+        monkeypatch.setattr(ws, "load_digest", lambda: "DIGEST")
+        out = asyncio.run(ws.chat(ws.ChatBody(message="why?", sessionId=sid)))
+        assert [c[1] for c in calls] == [sid, None]  # retried without resume
+        assert "PONG" in calls[1][0] and "why?" in calls[1][0]  # replayed
+        assert out["sessionId"] == sid  # same thread, not a new one
+        assert [m["text"] for m in ws.load_chat(sid)["messages"]] \
+            == ["ping", "PONG", "why?", "PONG2"]
+
+    def test_timeout_is_not_retried(self, monkeypatch, tmp_path):
+        calls = []
+
+        async def runner(msg, session_id):
+            calls.append(session_id)
+            raise self.ws.CLIError("claude CLI timed out after 300s")
+
+        with pytest.raises(HTTPException) as raised:
+            self.call(monkeypatch, {"message": "hi",
+                                    "sessionId": "b8aff7a7-a46c-4de4-"
+                                                 "86ec-61085a56ffa1"},
+                      runner, tmp_path)
+        assert raised.value.status_code == 502
+        assert len(calls) == 1  # no second 300s wait
+
+    def test_concurrent_exchanges_do_not_lose_turns(self, monkeypatch,
+                                                    tmp_path):
+        import threading
+        ws = self.ws
+        monkeypatch.setattr(ws, "CHAT_DIR", tmp_path / "chat")
+
+        def exchange(n):
+            with ws._save_lock("abc"):
+                ws.record_turn("abc", f"q{n}", f"a{n}")
+
+        threads = [threading.Thread(target=exchange, args=(n,))
+                   for n in range(2)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        assert len(ws.load_chat("abc")["messages"]) == 4
+
     def test_rejects_empty_message(self, monkeypatch, tmp_path):
         with pytest.raises(HTTPException) as raised:
             self.call(monkeypatch, {"message": "   "}, lambda *a: {},
@@ -354,12 +412,16 @@ class TestRunClaude:
 
 
 class TestBodyLimit:
-    def request(self, content_length: str | None):
+    def request(self, content_length: str | None, *, host="127.0.0.1:8787",
+                content_type="application/json"):
         from starlette.requests import Request
-        headers = ([] if content_length is None
-                   else [(b"content-length", content_length.encode())])
+        headers = [(b"host", host.encode()), (b"content-type",
+                                              content_type.encode())]
+        if content_length is not None:
+            headers.append((b"content-length", content_length.encode()))
         return Request({"type": "http", "method": "POST",
-                        "path": "/api/chat", "headers": headers})
+                        "path": "/api/chat", "headers": headers,
+                        "query_string": b""})
 
     def test_oversized_body_is_413(self):
         ws = load_module()
@@ -391,6 +453,52 @@ class TestBodyLimit:
         assert asyncio.run(ws.limit_body(self.request("42"), call_next)) is sentinel
 
 
+class TestGuard:
+    """Loopback-host and JSON-content-type checks (CSRF / DNS rebinding)."""
+
+    def request(self, *, method="POST", host="127.0.0.1:8787",
+                content_type="application/json", content_length="42"):
+        from starlette.requests import Request
+        headers = [(b"host", host.encode()), (b"content-type",
+                                              content_type.encode())]
+        if content_length is not None:
+            headers.append((b"content-length", content_length.encode()))
+        return Request({"type": "http", "method": method,
+                        "path": "/api/chat", "headers": headers,
+                        "query_string": b""})
+
+    def guard(self, **kw):
+        ws = load_module()
+        sentinel = object()
+
+        async def call_next(request):
+            return sentinel
+
+        response = asyncio.run(ws.limit_body(self.request(**kw), call_next))
+        return None if response is sentinel else response.status_code
+
+    def test_foreign_host_is_403(self):
+        assert self.guard(host="attacker.com") == 403
+
+    def test_local_ip_is_403(self):
+        assert self.guard(host="192.168.1.5:8787") == 403
+
+    def test_bracketed_ipv6_loopback_passes(self):
+        assert self.guard(host="[::1]:8787") is None
+
+    def test_bare_ipv6_loopback_passes(self):
+        assert self.guard(host="::1") is None
+
+    def test_get_passes_without_content_type(self):
+        assert self.guard(method="GET", content_type="") is None
+
+    def test_post_text_plain_is_415(self):
+        assert self.guard(content_type="text/plain") == 415
+
+    def test_post_without_content_length_is_411(self):
+        assert self.guard(content_length=None) == 411
+
+
 class TestDigest:
     def test_reads_the_split_workspace_file(self, monkeypatch, tmp_path):
         ws = load_module()
@@ -403,3 +511,19 @@ class TestDigest:
         monkeypatch.setattr(ws, "DIGEST_PATH", snapshot)
         digest = ws.load_digest()
         assert "s1" in digest and "3 data series" in digest
+
+def test_corrupt_snapshot_degrades_to_a_fallback(monkeypatch, tmp_path):
+    ws = load_module()
+    (tmp_path / "snapshot.json").write_text("not json")
+    monkeypatch.setattr(ws, "DIGEST_PATH", tmp_path / "snapshot.json")
+    assert ws.load_digest()
+
+
+def test_malformed_workspace_entries_do_not_crash(monkeypatch, tmp_path):
+    ws = load_module()
+    (tmp_path / "snapshot.json").write_text(json.dumps(
+        {"generatedAt": "x", "counts": {}}))
+    (tmp_path / "workspace.json").write_text(json.dumps(
+        {"runs": ["oops"], "failed": ["x"], "specs": [1]}))
+    monkeypatch.setattr(ws, "DIGEST_PATH", tmp_path / "snapshot.json")
+    assert ws.load_digest()

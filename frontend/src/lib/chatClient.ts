@@ -36,7 +36,9 @@ export async function sendChat(
       ok: false,
       offline: true,
       error:
-        "The local bridge isn't reachable. Start it with: uv run python local_bridge.py",
+        "The local bridge isn't reachable. Start it with: uv run python local_bridge.py. " +
+        "If it is running, your browser may be blocking access to the local network — " +
+        "allow the connection when prompted (Chrome asks on first use).",
     };
   }
   const body = (await res.json().catch(() => ({}))) as {
@@ -57,10 +59,12 @@ export async function sendChat(
   return { ok: true, reply: body.reply, sessionId: body.sessionId ?? null };
 }
 
-/** Saved conversations from the workspace, newest first. Empty when the
- * bridge is unreachable or the payload is malformed. */
-export async function listChats(): Promise<ChatSummary[]> {
+/** Saved conversations from the workspace, newest first. null when the
+ * bridge can't be reached (history availability unknown); [] only when the
+ * bridge answered with none or a malformed payload. */
+export async function listChats(): Promise<ChatSummary[] | null> {
   const body = await getJson("/api/chats");
+  if (body === null) return null;
   if (!Array.isArray(body)) return [];
   return body
     .filter((c): c is Record<string, unknown> =>
@@ -73,9 +77,12 @@ export async function listChats(): Promise<ChatSummary[]> {
     }));
 }
 
-/** One saved transcript's turns; empty when it is gone or malformed. */
-export async function loadChat(sessionId: string): Promise<ChatTurn[]> {
+/** One saved transcript's turns. null when the bridge can't be reached or
+ * the chat is gone; [] only when it answered with none or a malformed
+ * payload. */
+export async function loadChat(sessionId: string): Promise<ChatTurn[] | null> {
   const body = await getJson(`/api/chats/${encodeURIComponent(sessionId)}`);
+  if (body === null) return null;
   const turns = (body as { messages?: unknown })?.messages;
   if (!Array.isArray(turns)) return [];
   return turns.filter(

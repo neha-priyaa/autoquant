@@ -12,7 +12,8 @@ export default function Chat() {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [history, setHistory] = useState<ChatSummary[]>([]);
+  // null = the bridge didn't answer, so history availability is unknown
+  const [history, setHistory] = useState<ChatSummary[] | null>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [waiting, setWaiting] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
@@ -33,9 +34,9 @@ export default function Chat() {
     const chats = await listChats();
     if (genRef.current !== gen) return;
     setHistory(chats);
-    if (chats.length === 0) return;
+    if (!chats || chats.length === 0) return;
     const saved = await loadChat(chats[0].sessionId);
-    if (genRef.current !== gen) return;
+    if (genRef.current !== gen || saved === null) return;
     setMessages(saved);
     setSessionId(chats[0].sessionId);
   }
@@ -44,6 +45,12 @@ export default function Chat() {
     const gen = ++genRef.current;
     const saved = await loadChat(id);
     if (genRef.current !== gen) return;
+    // an unloadable transcript must not replace the view with a blank chat;
+    // dropping back to the empty state makes the failed bridge visible
+    if (saved === null) {
+      setMessages([]);
+      return;
+    }
     setMessages(saved);
     setSessionId(id);
     setShowHistory(false);
@@ -95,7 +102,7 @@ export default function Chat() {
           aria-expanded={showHistory}
           className="text-dim transition-colors hover:text-ink"
         >
-          HISTORY ({history.length})
+          HISTORY ({history === null ? "—" : history.length})
         </button>
         <button
           type="button"
@@ -108,7 +115,12 @@ export default function Chat() {
 
       {showHistory && (
         <ul className="mt-2 max-h-48 overflow-y-auto border border-line bg-surface/30">
-          {history.length === 0 ? (
+          {history === null ? (
+            <li className="px-4 py-2 font-mono text-[11px] text-dim">
+              Can't load chats — is the bridge running?{" "}
+              <code className="text-ink">uv run python local_bridge.py</code>
+            </li>
+          ) : history.length === 0 ? (
             <li className="px-4 py-2 font-mono text-[11px] text-dim">
               No saved conversations yet.
             </li>

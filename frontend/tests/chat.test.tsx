@@ -205,4 +205,36 @@ describe("Chat history", () => {
       screen.getByText(/Ask about your research/)).toBeInTheDocument());
     expect(screen.queryByText("old question")).not.toBeInTheDocument();
   });
+
+  it("marks history as unavailable when the bridge can't be reached", async () => {
+    vi.mocked(listChats).mockResolvedValue(null);
+    render(<Chat />);
+    const toggle = await screen.findByRole(
+      "button", { name: /HISTORY \(—\)/ });
+    await userEvent.click(toggle);
+    expect(screen.getByText(/Can't load chats/)).toBeInTheDocument();
+    expect(screen.queryByText(/No saved conversations yet/))
+      .not.toBeInTheDocument();
+  });
+
+  it("falls back to the empty-state hint when a saved chat can't be loaded", async () => {
+    vi.mocked(listChats).mockResolvedValue([
+      savedChat("b", "newest question"),
+      savedChat("a", "older question"),
+    ]);
+    vi.mocked(loadChat).mockResolvedValueOnce([
+      { role: "user", text: "newest question" },
+      { role: "assistant", text: "newest answer" },
+    ]);
+    render(<Chat />);
+    await waitFor(() =>
+      expect(screen.getByText("newest answer")).toBeInTheDocument());
+    vi.mocked(loadChat).mockResolvedValue(null);
+    await userEvent.click(screen.getByRole("button", { name: /HISTORY \(2\)/ }));
+    await userEvent.click(screen.getByText("older question"));
+    // an unloadable transcript must not masquerade as a blank conversation
+    await waitFor(() => expect(
+      screen.queryByText("newest answer")).not.toBeInTheDocument());
+    expect(screen.getByText(/Ask about your research/)).toBeInTheDocument();
+  });
 });

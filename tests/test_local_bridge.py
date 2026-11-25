@@ -538,6 +538,9 @@ class TestCorsPreflight:
 
     def preflight(self, ws, private_network: bool) -> tuple[int, dict]:
         headers = [
+            # real Chrome preflights carry Host, so the request crosses the
+            # loopback-host gate before CORSMiddleware answers it
+            (b"host", b"127.0.0.1:8787"),
             (b"origin", self.DEPLOYED.encode()),
             (b"access-control-request-method", b"POST"),
             (b"access-control-request-headers", b"content-type"),

@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Send } from "lucide-react";
-import { sendChat, listChats, loadChat, type ChatSummary } from "../../lib/chatClient";
+import { sendChat, listChats, loadChat, BRIDGE_START,
+         type ChatSummary } from "../../lib/chatClient";
 import { useDocumentTitle } from "../../lib/useDocumentTitle";
 
 interface Msg { role: "user" | "assistant"; text: string }
@@ -32,8 +33,11 @@ export default function Chat() {
   async function restoreLatest() {
     const gen = ++genRef.current;
     const chats = await listChats();
-    if (genRef.current !== gen) return;
+    // history is global, not per-conversation: a result that races a
+    // newer conversation switch still fills the list correctly, so it
+    // lands above the generation guard (which protects messages/sessionId)
     setHistory(chats);
+    if (genRef.current !== gen) return;
     if (!chats || chats.length === 0) return;
     const saved = await loadChat(chats[0].sessionId);
     if (genRef.current !== gen || saved === null) return;
@@ -46,9 +50,12 @@ export default function Chat() {
     const saved = await loadChat(id);
     if (genRef.current !== gen) return;
     // an unloadable transcript must not replace the view with a blank chat;
-    // dropping back to the empty state makes the failed bridge visible
+    // dropping back to the empty state makes the failed bridge visible —
+    // and the old session id must not survive: the next message would
+    // invisibly resume the conversation the user just left
     if (saved === null) {
       setMessages([]);
+      setSessionId(null);
       return;
     }
     setMessages(saved);
@@ -118,7 +125,7 @@ export default function Chat() {
           {history === null ? (
             <li className="px-4 py-2 font-mono text-[11px] text-dim">
               Can't load chats — is the bridge running?{" "}
-              <code className="text-ink">uv run python local_bridge.py</code>
+              <code className="text-ink">{BRIDGE_START}</code>
             </li>
           ) : history.length === 0 ? (
             <li className="px-4 py-2 font-mono text-[11px] text-dim">
@@ -150,7 +157,7 @@ export default function Chat() {
             Ask about your research: counts, runs, failures, specs, catalog…
             <div className="mt-3 font-mono text-[11px]">
               requires the local bridge:{" "}
-              <code className="text-ink">uv run python local_bridge.py</code>
+              <code className="text-ink">{BRIDGE_START}</code>
             </div>
           </div>
         ) : (

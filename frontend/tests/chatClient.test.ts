@@ -137,9 +137,12 @@ describe("loadChat", () => {
     expect(await loadChat("a")).toEqual([{ role: "user", text: "kept" }]);
   });
 
-  it("returns null for an unknown or offline chat", async () => {
+  it("returns an empty transcript for a chat the bridge no longer has", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 404 }));
-    expect(await loadChat("gone")).toEqual(null);
+    expect(await loadChat("gone")).toEqual([]);
+  });
+
+  it("returns null when the bridge is offline", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("fail")));
     expect(await loadChat("gone")).toEqual(null);
   });

@@ -4,6 +4,10 @@
 
 const BRIDGE = import.meta.env.VITE_CHAT_BRIDGE_URL ?? "http://127.0.0.1:8787";
 
+/** How to start the bridge locally; shown wherever the UI needs the user
+ * to have it running. Kept in one place so the command can't drift. */
+export const BRIDGE_START = "uv run python local_bridge.py";
+
 export type ChatOutcome =
   | { ok: true; reply: string; sessionId: string | null }
   | { ok: false; offline: boolean; error: string };
@@ -36,7 +40,7 @@ export async function sendChat(
       ok: false,
       offline: true,
       error:
-        "The local bridge isn't reachable. Start it with: uv run python local_bridge.py. " +
+        `The local bridge isn't reachable. Start it with: ${BRIDGE_START}. ` +
         "If it is running, your browser may be blocking access to the local network — " +
         "allow the connection when prompted (Chrome asks on first use).",
     };
@@ -59,12 +63,12 @@ export async function sendChat(
   return { ok: true, reply: body.reply, sessionId: body.sessionId ?? null };
 }
 
-/** Saved conversations from the workspace, newest first. null when the
- * bridge can't be reached (history availability unknown); [] only when the
- * bridge answered with none or a malformed payload. */
+/** Saved conversations from the workspace, newest first. null only when
+ * the bridge can't be reached (history availability unknown); [] when it
+ * answered with none or an unusable payload. */
 export async function listChats(): Promise<ChatSummary[] | null> {
-  const body = await getJson("/api/chats");
-  if (body === null) return null;
+  const { reached, body } = await getJson("/api/chats");
+  if (!reached) return null;
   if (!Array.isArray(body)) return [];
   return body
     .filter((c): c is Record<string, unknown> =>
@@ -77,12 +81,13 @@ export async function listChats(): Promise<ChatSummary[] | null> {
     }));
 }
 
-/** One saved transcript's turns. null when the bridge can't be reached or
- * the chat is gone; [] only when it answered with none or a malformed
- * payload. */
+/** One saved transcript's turns. null only when the bridge can't be
+ * reached; [] when the chat is gone or its transcript is unusable — the
+ * bridge answered, there just isn't a conversation behind that id. */
 export async function loadChat(sessionId: string): Promise<ChatTurn[] | null> {
-  const body = await getJson(`/api/chats/${encodeURIComponent(sessionId)}`);
-  if (body === null) return null;
+  const { reached, body } =
+    await getJson(`/api/chats/${encodeURIComponent(sessionId)}`);
+  if (!reached) return null;
   const turns = (body as { messages?: unknown })?.messages;
   if (!Array.isArray(turns)) return [];
   return turns.filter(
@@ -108,12 +113,18 @@ function errorDetail(detail: unknown): string | null {
   return messages.length > 0 ? messages.join("; ") : null;
 }
 
-async function getJson(path: string): Promise<unknown> {
+/** Fetch JSON from the bridge. reached=false only on network failure
+ * (bridge not running, or the browser blocking local-network access);
+ * a non-2xx status or unparseable body still counts as reached, with
+ * body null — the bridge answered, the data just isn't there. */
+async function getJson(
+  path: string,
+): Promise<{ reached: boolean; body: unknown }> {
   try {
     const res = await fetch(`${BRIDGE}${path}`);
-    if (!res.ok) return null;
-    return await res.json();
+    if (!res.ok) return { reached: true, body: null };
+    return { reached: true, body: await res.json().catch(() => null) };
   } catch {
-    return null;
+    return { reached: false, body: null };
   }
 }
